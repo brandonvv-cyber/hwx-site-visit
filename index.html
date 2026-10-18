@@ -56,6 +56,7 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .phrow { display: flex; gap: 12px; margin-top: 16px; }
 .btn.photo { background: #e65100; color: #ffffff; border-color: #bf360c; flex: 1; min-height: 78px; font-size: 24px; display: flex; align-items: center; justify-content: center; gap: 10px; box-shadow: 0 4px 0 #bf360c; }
 .btn.photo.album { background: #1565c0; border-color: #0d47a1; box-shadow: 0 4px 0 #0d47a1; }
+.btn.photo.video { background: #2e7d32; border-color: #1b5e20; box-shadow: 0 4px 0 #1b5e20; }
 .btn.photo svg { width: 34px; height: 34px; flex: none; fill: none; stroke: #ffffff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .btn.photo:active { transform: translateY(3px); box-shadow: 0 1px 0 #bf360c; }
 .other.short { min-height: 84px; }
@@ -90,10 +91,11 @@ input[type=file] { display: none; }
 <div id="app"></div>
 <div id="foot" class="foot" hidden></div>
 <input type="file" id="cam" accept="image/*" capture="environment">
-<input type="file" id="lib" accept="image/*" multiple>
+<input type="file" id="vcam" accept="video/*" capture="environment">
+<input type="file" id="lib" accept="image/*,video/*" multiple>
 <script>
 "use strict";
-const APP_VERSION = "1.2";
+const APP_VERSION = "1.3";
 const API = "https://script.google.com/macros/s/AKfycbwdahF6EsK6Xdo8Wy888LWhHfXSJZK7zliP-njXFUaqZr4txa3Q9MSPYqgxzC-8tLUMBg/exec";
 const OTHER = "Other (write it in the box below)";
 const EQ_REPAIR = ["Acrylic spa","Concrete spa","Pool equipment","Sauna or steam room","Water feature","Borehole or water treatment","Heat pump"];
@@ -200,16 +202,38 @@ async function sync(manual) {
       persist();
     }
     // 2) photos, one at a time
-    for (const p of photos.filter(x => !x.sent)) {
-      const b64 = await blobToB64(p.blob);
-      const r = await post({ action: "photo", code: p.code, name: p.name, mime: "image/jpeg", b64, ts: p.ts }, 90000);
-      if (!r.ok) throw new Error(r.error || "photo failed");
-      p.sent = true; p.driveId = r.id; await phPut(p); refreshStatus();
+    const todo = photos.filter(x => !x.sent).sort((a, b) => (a.video ? 1 : 0) - (b.video ? 1 : 0));
+    for (const p of todo) {
+      if (p.video) { p.driveId = await sendVideo(p); vprog = 0; }
+      else {
+        const b64 = await blobToB64(p.blob);
+        const r = await post({ action: "photo", code: p.code, name: p.name, mime: "image/jpeg", b64, ts: p.ts }, 90000);
+        if (!r.ok) throw new Error(r.error || "photo failed");
+        p.driveId = r.id;
+      }
+      p.sent = true; await phPut(p); refreshStatus();
     }
     lastOk = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   } catch (e) {
     lastErr = (e && e.name === "AbortError") ? "Slow or no signal" : "No signal or server busy";
   } finally { syncing = false; refreshStatus(); }
+}
+let vprog = 0;
+async function sendVideo(p) {
+  // The script opens a Drive upload session; the phone then sends the video straight to Drive in 8 MB pieces.
+  const s = await post({ action: "videoStart", code: p.code, name: p.name, mime: p.mime || "video/mp4", size: p.blob.size, origin: location.origin }, 30000);
+  if (!s.ok) throw new Error(s.error || "video start failed");
+  const size = p.blob.size, CH = 8 * 1024 * 1024; let off = 0, fileId = "";
+  while (off < size) {
+    const end = Math.min(off + CH, size);
+    const r = await fetch(s.url, { method: "PUT", headers: { "Content-Range": "bytes " + off + "-" + (end - 1) + "/" + size }, body: p.blob.slice(off, end) });
+    if (r.status === 308) { off = end; vprog = Math.round(off * 100 / size); refreshStatus(); continue; }
+    if (r.status === 200 || r.status === 201) { const d = await r.json(); fileId = d.id; off = size; break; }
+    throw new Error("video upload " + r.status);
+  }
+  const done = await post({ action: "videoDone", code: p.code, name: s.name, id: fileId, ts: p.ts }, 30000);
+  if (!done.ok) throw new Error(done.error || "video log failed");
+  return fileId;
 }
 function blobToB64(b) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(b); }); }
 async function pull() {
@@ -239,7 +263,7 @@ function refreshStatus() {
 }
 function syncHtml() {
   const p = pending();
-  let msg = syncing ? "Sending now..." : (p.n ? `${p.a} answers and ${p.p} photos are waiting to send.` : "Everything is sent to the office." + (lastOk ? " Last sent " + lastOk + "." : ""));
+  let msg = syncing ? (vprog ? "Sending a video: " + vprog + "%" : "Sending now...") : (p.n ? `${p.a} answers and ${p.p} photos or videos are waiting to send.` : "Everything is sent to the office." + (lastOk ? " Last sent " + lastOk + "." : ""));
   if (lastErr && p.n) msg += " " + lastErr + ". It will try again by itself.";
   return `<div id="syncbox" class="sync ${p.n ? "wait" : ""}"><b>${esc(msg)}</b>${p.n ? `<button class="btn" data-act="send" ${syncing ? "disabled" : ""}>Send now</button>` : ""}</div>`;
 }
@@ -249,11 +273,14 @@ let photoFor = "GEN";
 async function addPhotoFiles(files) {
   for (const f of files) {
     try {
-      const blob = await shrink(f);
-      const n = photos.filter(x => x.code === photoFor).reduce((m, x) => Math.max(m, x.n), 0) + 1;
-      const rec = { job: J.id, code: photoFor, n, name: photoFor + "_" + n + ".jpg", blob, ts: new Date().toISOString(), sent: false };
+      const isVideo = /^video\//.test(f.type) || /\.(mov|mp4|m4v|3gp|webm)$/i.test(f.name || "");
+      const blob = isVideo ? f : await shrink(f);
+      const n = photos.filter(x => x.code === photoFor && !!x.video === isVideo).reduce((m, x) => Math.max(m, x.n), 0) + 1;
+      const ext = isVideo ? ((/\.([a-z0-9]+)$/i.exec(f.name || "") || [0, "mp4"])[1].toLowerCase()) : "jpg";
+      const name = photoFor + (isVideo ? "_V" : "_") + n + "." + ext;
+      const rec = { job: J.id, code: photoFor, n, name, blob, video: isVideo, mime: isVideo ? (f.type || "video/mp4") : "image/jpeg", ts: new Date().toISOString(), sent: false };
       rec.id = await phAdd(rec); photos.push(rec);
-    } catch (e) { lastErr = "A photo could not be read"; }
+    } catch (e) { lastErr = "A photo or video could not be read"; }
   }
   render(); scheduleSync();
 }
@@ -266,10 +293,12 @@ async function shrink(file) {
 }
 function loadImg(file) { return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(file); }); }
 function photoUi(code) {
-  const mine = photos.filter(p => p.code === code);
+  const all = photos.filter(p => p.code === code);
+  const mine = all.filter(p => !p.video), vids = all.filter(p => p.video);
   const camSvg = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8h4l2-3h6l2 3h4v11H3z"/><circle cx="12" cy="13" r="3.5"/></svg>';
-  const picSvg = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M4 18l5-5 4 4 3-3 4 4"/></svg>';
-  return `<div class="phrow"><button class="btn photo" data-photo="${esc(code)}">${camSvg}Take photo${mine.length ? " (" + mine.length + ")" : ""}</button><button class="btn photo album" data-album="${esc(code)}">${picSvg}From album</button></div>` +
+  const vidSvg = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg>';
+  const picSvg ='<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M4 18l5-5 4 4 3-3 4 4"/></svg>';
+  return `<div class="phrow"><button class="btn photo" data-photo="${esc(code)}">${camSvg}Take photo${mine.length ? " (" + mine.length + ")" : ""}</button><button class="btn photo album" data-album="${esc(code)}">${picSvg}From album</button></div><div class="phrow"><button class="btn photo video" data-video="${esc(code)}">${vidSvg}Record video${vids.length ? " (" + vids.length + " saved)" : ""}</button></div>` +
     (mine.length ? `<div class="thumbs">${mine.slice(-6).map(p => `<img alt="photo ${p.n}" src="${URL.createObjectURL(p.blob)}">`).join("")}</div>` : "");
 }
 
@@ -386,6 +415,7 @@ document.addEventListener("click", async e => {
   if (d.tab) { S.tab = d.tab; const l = qList(S.tab); const f = l.find(i => !has(i.code)) || l[0]; S.cur = f ? f.code : ""; nav("q"); return; }
   if (d.photo) { photoFor = d.photo; document.getElementById("cam").click(); return; }
   if (d.album) { photoFor = d.album; document.getElementById("lib").click(); return; }
+  if (d.video) { photoFor = d.video; document.getElementById("vcam").click(); return; }
   if (d.opt !== undefined) {
     const it = qList(S.tab).find(i => i.code === S.cur), o = d.opt;
     if (it.multi) { const arr = (Array.isArray(val(it.code)) ? val(it.code) : []).slice(); const i = arr.indexOf(o); if (i >= 0) arr.splice(i, 1); else arr.push(o); setAns(it.code, arr); const y = scrollY; render(); scrollTo(0, y); }
@@ -404,7 +434,7 @@ document.addEventListener("input", e => {
   if (t.id === "other") setOther(S.cur, t.value);
   else if (t.id === "textin" || t.id === "numin") setAns(S.cur, t.value);
 });
-for (const id of ["cam", "lib"]) document.getElementById(id).addEventListener("change", e => { const f = Array.from(e.target.files); e.target.value = ""; if (f.length) addPhotoFiles(f); });
+for (const id of ["cam", "lib", "vcam"]) document.getElementById(id).addEventListener("change", e => { const f = Array.from(e.target.files); e.target.value = ""; if (f.length) addPhotoFiles(f); });
 window.addEventListener("online", () => sync(false));
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") sync(false); });
 
