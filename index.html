@@ -95,7 +95,7 @@ input[type=file] { display: none; }
 <input type="file" id="lib" accept="image/*,video/*" multiple>
 <script>
 "use strict";
-const APP_VERSION = "1.5";
+const APP_VERSION = "1.6";
 const API = "https://script.google.com/macros/s/AKfycbwdahF6EsK6Xdo8Wy888LWhHfXSJZK7zliP-njXFUaqZr4txa3Q9MSPYqgxzC-8tLUMBg/exec";
 const OTHER = "Other (write it in the box below)";
 const EQ_REPAIR = ["Acrylic spa","Concrete spa","Pool equipment","Sauna or steam room","Water feature","Borehole or water treatment","Heat pump"];
@@ -363,7 +363,7 @@ async function loadClients() {
 }
 function clientRows(f) {
   const q = (f || "").toLowerCase();
-  const l = CLIENTS.filter(c => !q || (c.name + " " + (c.address || "") + " " + (c.suburb || "")).toLowerCase().includes(q)).slice(0, 60);
+  const l = CLIENTS.filter(c => !q || (c.name + " " + (c.address || "") + " " + (c.suburb || "")).toLowerCase().includes(q)).slice(0, 300);
   return l.map(c => `<button class="block" data-client="${esc(c.id)}"><span class="t"><b>${esc(c.name)}</b><span>${esc(c.address || "")}${c.type ? " &middot; " + esc(c.type) : ""}</span></span><span class="go">&#9654;</span></button>`).join("") || `<div class="note">No client matches. Ask the office to add it to the list.</div>`;
 }
 function vClients() {
