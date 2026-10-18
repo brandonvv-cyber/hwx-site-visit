@@ -95,14 +95,19 @@ input[type=file] { display: none; }
 <input type="file" id="lib" accept="image/*,video/*" multiple>
 <script>
 "use strict";
-const APP_VERSION = "1.3";
+const APP_VERSION = "1.4";
 const API = "https://script.google.com/macros/s/AKfycbwdahF6EsK6Xdo8Wy888LWhHfXSJZK7zliP-njXFUaqZr4txa3Q9MSPYqgxzC-8tLUMBg/exec";
 const OTHER = "Other (write it in the box below)";
 const EQ_REPAIR = ["Acrylic spa","Concrete spa","Pool equipment","Sauna or steam room","Water feature","Borehole or water treatment","Heat pump"];
 const EQ_NEW = ["Acrylic spa","Concrete spa","Sauna","Steam room","Water feature","Domestic pool","Water reticulation","Borehole or water treatment","Deck","Heat pump","Commercial pool","Natural pool (pilot only)"];
 const REPAIR_TAB = {"Acrylic spa":"9a Spa repair","Concrete spa":"9a Spa repair","Pool equipment":"9b Pool repair","Heat pump":"9b Pool repair","Sauna or steam room":"9d Sauna and steam repair","Water feature":"9e Water feature repair","Borehole or water treatment":"9c Water treatment repair"};
 const NEW_TAB = {"Acrylic spa":"2 Spa","Concrete spa":"2 Spa","Sauna":"3 Sauna","Steam room":"4 Steam","Water feature":"5 Water feature","Domestic pool":"6 Pool","Water reticulation":"7 Reticulation","Borehole or water treatment":"8 Borehole","Deck":"10 Deck","Heat pump":"13 Heat pump","Commercial pool":"11 Commercial pool","Natural pool (pilot only)":"12 Natural pool"};
-const KINDS = ["Repair quote","New installation quote","Both"];
+const ROUTINE = "Routine visit or inspection";
+const KINDS = ["Repair quote","New installation quote","Both", ROUTINE];
+const ROUTINE_TABS = ["16 Plant setup","17 Plant inspection"];
+function today() { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+let REP = new Set();   // codes of questions that repeat every visit (tab has rep:true); their answers are stored per visit date as code@date
+function K(code) { return REP.has(code) ? code + "@" + S.visit : code; }
 
 /* ---------- tiny IndexedDB wrapper ---------- */
 let dbp;
@@ -127,7 +132,7 @@ const phPut = o => tx("photos", "readwrite", s => s.put(o));
 /* ---------- state ---------- */
 let Q = null;               // questions {version, tabs}
 let J = null;               // current job {id, token, client, address, folder_name, ans:{code:{v,o,ts,tab,q,dirty}}}
-let S = { view: "boot", tab: "", cur: "", pickStage: "repair" };
+let S = { view: "boot", tab: "", cur: "", pickStage: "repair", visit: today() };
 let photos = [];            // photo records for this job (blobs)
 let syncing = false, lastErr = "", lastOk = "";
 const app = document.getElementById("app"), foot = document.getElementById("foot");
@@ -136,7 +141,7 @@ const params = new URLSearchParams(location.search);
 const deviceId = (() => { let d = localStorage.getItem("hwx-device"); if (!d) { d = "dev-" + Math.random().toString(36).slice(2, 8); try { localStorage.setItem("hwx-device", d); } catch (e) {} } return d; })();
 
 /* ---------- answers ---------- */
-function ansOf(code) { return J.ans[code]; }
+function ansOf(code) { return J.ans[K(code)]; }
 function val(code) { const a = ansOf(code); return a ? a.v : undefined; }
 function has(code) { const v = val(code); return Array.isArray(v) ? v.length > 0 : (v !== undefined && v !== null && String(v).trim() !== ""); }
 function flat(code) {
@@ -145,12 +150,12 @@ function flat(code) {
   const v = val(code); return (Array.isArray(v) ? v.join(" ") : (v || "")).toLowerCase(); }
 let saveTimer;
 function setAns(code, v, extra) {
-  const it = findItem(code) || {};
-  const prev = J.ans[code] || {};
-  J.ans[code] = Object.assign({ o: prev.o || "", tab: it.tab || prev.tab || "", q: it.q || prev.q || "" }, extra || {}, { v: v, ts: new Date().toISOString(), dirty: true });
+  const it = findItem(code) || {}, key = K(code);
+  const prev = J.ans[key] || {};
+  J.ans[key] = Object.assign({ o: prev.o || "", tab: it.tab || prev.tab || "", q: it.q || prev.q || "" }, extra || {}, { v: v, ts: new Date().toISOString(), dirty: true });
   persist(); scheduleSync();
 }
-function setOther(code, text) { const it = findItem(code) || {}; const a = J.ans[code] || { v: "", tab: it.tab || "", q: it.q || "" }; a.o = text; a.ts = new Date().toISOString(); a.dirty = true; J.ans[code] = a; persist(); scheduleSync(); }
+function setOther(code, text) { const it = findItem(code) || {}, key = K(code); const a = J.ans[key] || { v: "", tab: it.tab || "", q: it.q || "" }; a.o = text; a.ts = new Date().toISOString(); a.dirty = true; J.ans[key] = a; persist(); scheduleSync(); }
 function persist() { clearTimeout(saveTimer); saveTimer = setTimeout(() => kvPut("job:" + J.id, J).catch(() => {}), 150); }
 function findItem(code) { if (!Q) return null; for (const k in Q.tabs) for (const it of Q.tabs[k].items) if (it.code === code) return Object.assign({ tab: k }, it); return null; }
 
@@ -158,6 +163,7 @@ function findItem(code) { if (!Q) return null; for (const k in Q.tabs) for (cons
 function startKind() { return val("START-01") || ""; }
 function startList(c) { const v = val(c); return Array.isArray(v) ? v : []; }
 function jobTabs() {
+  if (startKind() === ROUTINE) return ROUTINE_TABS.filter(k => Q.tabs[k]);
   const t = ["1 Site"]; const add = k => { if (k && !t.includes(k)) t.push(k); };
   if (startKind() !== "New installation quote") startList("START-02").forEach(e => add(REPAIR_TAB[e]));
   if (startKind() !== "Repair quote") startList("START-03").forEach(e => add(NEW_TAB[e]));
@@ -245,8 +251,9 @@ async function pull() {
     d.answers.forEach(sa => {
       const mine = J.ans[sa.code];
       if (!mine || (!mine.dirty && new Date(sa.ts) > new Date(mine.ts))) {
-        const it = findItem(sa.code) || {};
-        const multi = it.multi || ["START-02", "START-03"].includes(sa.code);
+        const base = String(sa.code).split("@")[0];
+        const it = findItem(base) || {};
+        const multi = it.multi || ["START-02", "START-03"].includes(base);
         J.ans[sa.code] = { v: multi ? String(sa.answer || "").split("; ").filter(Boolean) : sa.answer, o: sa.other || "", tab: it.tab || "", q: it.q || "", ts: sa.ts, dirty: false };
       }
     });
@@ -345,7 +352,7 @@ function vHub() {
   const tabs = jobTabs(); let all = 0, dn = 0;
   const blocks = tabs.map(t => {
     const p = progress(t); all += p.total; dn += p.done; const complete = p.total > 0 && p.done === p.total;
-    return `<button class="block ${complete ? "done" : ""} ${p.done === 0 && t === "1 Site" ? "start" : ""}" data-tab="${esc(t)}"><span class="t"><b>${esc(Q.tabs[t].title)}</b><span>${complete ? "Done" : p.done + " of " + p.total + " answered"}</span></span><span class="go">${complete ? "&#10003;" : "&#9654;"}</span></button>`;
+    return `<button class="block ${complete ? "done" : ""} ${p.done === 0 && t === "1 Site" ? "start" : ""}" data-tab="${esc(t)}"><span class="t"><b>${esc(Q.tabs[t].title)}</b><span>${Q.tabs[t].rep ? "Visit " + esc(S.visit) + ": " : ""}${complete ? "Done" : p.done + " of " + p.total + " answered"}</span></span><span class="go">${complete ? "&#10003;" : "&#9654;"}</span></button>`;
   }).join("");
   const gp = photos.filter(p => p.code === "GEN").length;
   app.innerHTML = hdr("Your jobs", "jobsback", true) +
@@ -377,7 +384,7 @@ function vQ() {
     `<div class="bar"><i style="width:${Math.round(p.done * 100 / p.total)}%"></i></div>
      <div class="count">Question ${idx + 1} of ${list.length}${it.multi ? " &middot; pick all that apply" : ""}</div>
      ${secOf(tab, it.code) ? `<div class="sec">${esc(secOf(tab, it.code))}</div>` : ""}
-     <div class="q">${esc(it.q)}</div><div class="hint"><b>What to look for</b>${esc(it.hint)}</div>${body}${photoUi(it.code)}`;
+     <div class="q">${esc(it.q)}</div><div class="hint"><b>What to look for</b>${esc(it.hint)}</div>${body}${photoUi(K(it.code))}`;
   const last = idx === list.length - 1;
   setFoot(`<button class="btn alt" data-act="prev" ${idx === 0 ? "disabled" : ""}>Back</button><button class="btn" data-act="next">${last ? "Finish" : (has(it.code) ? "Next" : "Skip")}</button>`); refreshStatus();
 }
@@ -406,7 +413,7 @@ document.addEventListener("click", async e => {
   const b = e.target.closest("button"); if (!b) return;
   const d = b.dataset;
   if (d.open) { await openJob(d.open); return; }
-  if (d.kind) { setAns("START-01", d.kind, { tab: "START", q: "Repair, new installation or both" }); S.pickStage = d.kind === "New installation quote" ? "new" : "repair"; nav("pick"); return; }
+  if (d.kind) { setAns("START-01", d.kind, { tab: "START", q: "Repair, new installation or both" }); if (d.kind === ROUTINE) { nav("hub"); return; } S.pickStage = d.kind === "New installation quote" ? "new" : "repair"; nav("pick"); return; }
   if (d.eq) {
     const code = S.pickStage === "repair" ? "START-02" : "START-03"; const arr = startList(code).slice(); const i = arr.indexOf(d.eq);
     if (i >= 0) arr.splice(i, 1); else arr.push(d.eq);
@@ -436,7 +443,7 @@ document.addEventListener("input", e => {
 });
 for (const id of ["cam", "lib", "vcam"]) document.getElementById(id).addEventListener("change", e => { const f = Array.from(e.target.files); e.target.value = ""; if (f.length) addPhotoFiles(f); });
 window.addEventListener("online", () => sync(false));
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") sync(false); });
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { if (S.visit !== today()) { S.visit = today(); if (J && S.view === "hub") render(); } sync(false); } });
 
 /* ---------- boot ---------- */
 async function loadQuestions() {
@@ -457,7 +464,7 @@ async function openJob(id, token) {
 (async function boot() {
   render();
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
-  try { await loadQuestions(); } catch (e) { app.innerHTML = hdr("HWX Site Visit") + `<div class="note">Could not load the questions. Open the link once with signal.</div>`; return; }
+  try { await loadQuestions(); REP = new Set(); for (const k in Q.tabs) if (Q.tabs[k].rep) Q.tabs[k].items.forEach(i => { if (i.code) REP.add(i.code); }); } catch (e) { app.innerHTML = hdr("HWX Site Visit") + `<div class="note">Could not load the questions. Open the link once with signal.</div>`; return; }
   const job = params.get("job"), t = params.get("t");
   if (job) await openJob(job, t); else { S.view = "jobs"; render(); }
   if ("serviceWorker" in navigator) {
