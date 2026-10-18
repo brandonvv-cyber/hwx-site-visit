@@ -95,7 +95,7 @@ input[type=file] { display: none; }
 <input type="file" id="lib" accept="image/*,video/*" multiple>
 <script>
 "use strict";
-const APP_VERSION = "1.4";
+const APP_VERSION = "1.5";
 const API = "https://script.google.com/macros/s/AKfycbwdahF6EsK6Xdo8Wy888LWhHfXSJZK7zliP-njXFUaqZr4txa3Q9MSPYqgxzC-8tLUMBg/exec";
 const OTHER = "Other (write it in the box below)";
 const EQ_REPAIR = ["Acrylic spa","Concrete spa","Pool equipment","Sauna or steam room","Water feature","Borehole or water treatment","Heat pump"];
@@ -103,11 +103,19 @@ const EQ_NEW = ["Acrylic spa","Concrete spa","Sauna","Steam room","Water feature
 const REPAIR_TAB = {"Acrylic spa":"9a Spa repair","Concrete spa":"9a Spa repair","Pool equipment":"9b Pool repair","Heat pump":"9b Pool repair","Sauna or steam room":"9d Sauna and steam repair","Water feature":"9e Water feature repair","Borehole or water treatment":"9c Water treatment repair"};
 const NEW_TAB = {"Acrylic spa":"2 Spa","Concrete spa":"2 Spa","Sauna":"3 Sauna","Steam room":"4 Steam","Water feature":"5 Water feature","Domestic pool":"6 Pool","Water reticulation":"7 Reticulation","Borehole or water treatment":"8 Borehole","Deck":"10 Deck","Heat pump":"13 Heat pump","Commercial pool":"11 Commercial pool","Natural pool (pilot only)":"12 Natural pool"};
 const ROUTINE = "Routine visit or inspection";
-const KINDS = ["Repair quote","New installation quote","Both", ROUTINE];
+const MAINT = "Pool or spa maintenance";
+const KINDS = ["Repair quote","New installation quote","Both", ROUTINE, MAINT];
 const ROUTINE_TABS = ["16 Plant setup","17 Plant inspection"];
+const MAINT_TABS = ["18 Pool or spa profile","19 Maintenance visit"];
 function today() { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
-let REP = new Set();   // codes of questions that repeat every visit (tab has rep:true); their answers are stored per visit date as code@date
-function K(code) { return REP.has(code) ? code + "@" + S.visit : code; }
+let SCOPE = new Map();   // code -> "r" (per visit date), "c" (per client) or "cv" (per client and visit date); other codes are plain
+function K(code) {
+  const s = SCOPE.get(code); if (!s) return code;
+  if (s === "r") return code + "@" + S.visit;
+  const c = S.client || "NOCLIENT";
+  return s === "c" ? code + "@" + c : code + "@" + c + "@" + S.visit;
+}
+let CLIENTS = [];        // maintenance clients (one per pool or spa) from the office list
 
 /* ---------- tiny IndexedDB wrapper ---------- */
 let dbp;
@@ -132,7 +140,7 @@ const phPut = o => tx("photos", "readwrite", s => s.put(o));
 /* ---------- state ---------- */
 let Q = null;               // questions {version, tabs}
 let J = null;               // current job {id, token, client, address, folder_name, ans:{code:{v,o,ts,tab,q,dirty}}}
-let S = { view: "boot", tab: "", cur: "", pickStage: "repair", visit: today() };
+let S = { view: "boot", tab: "", cur: "", pickStage: "repair", visit: today(), client: "" };
 let photos = [];            // photo records for this job (blobs)
 let syncing = false, lastErr = "", lastOk = "";
 const app = document.getElementById("app"), foot = document.getElementById("foot");
@@ -164,6 +172,7 @@ function startKind() { return val("START-01") || ""; }
 function startList(c) { const v = val(c); return Array.isArray(v) ? v : []; }
 function jobTabs() {
   if (startKind() === ROUTINE) return ROUTINE_TABS.filter(k => Q.tabs[k]);
+  if (startKind() === MAINT) return MAINT_TABS.filter(k => Q.tabs[k]);
   const t = ["1 Site"]; const add = k => { if (k && !t.includes(k)) t.push(k); };
   if (startKind() !== "New installation quote") startList("START-02").forEach(e => add(REPAIR_TAB[e]));
   if (startKind() !== "Repair quote") startList("START-03").forEach(e => add(NEW_TAB[e]));
@@ -245,7 +254,7 @@ function blobToB64(b) { return new Promise((res, rej) => { const r = new FileRea
 async function pull() {
   if (!J || !J.token) return;
   try {
-    const r = await fetch(API + "?action=job&job=" + encodeURIComponent(J.id) + "&t=" + encodeURIComponent(J.token));
+    const r = await fetch(API + "?action=job&job=" + encodeURIComponent(J.id) + "&t=" + encodeURIComponent(J.token) + (startKind() === MAINT && S.client ? "&client=" + encodeURIComponent(S.client) + "&date=" + encodeURIComponent(S.visit) : ""));
     const d = await r.json(); if (!d.ok) return;
     J.client = d.job.client; J.address = d.job.address; J.folder_name = d.job.folder_name;
     d.answers.forEach(sa => {
@@ -348,7 +357,64 @@ function vPick() {
      <div class="opts">${list.map(o => `<button class="opt ${sel.includes(o) ? "on" : ""}" data-eq="${esc(o)}"><span class="box"></span>${esc(o)}</button>`).join("")}</div>`;
   setFoot(`<button class="btn" data-act="pickNext" ${sel.length ? "" : "disabled"}>Next</button>`); refreshStatus();
 }
+async function loadClients() {
+  try { const r = await fetch(API + "?action=clients&job=" + encodeURIComponent(J.id) + "&t=" + encodeURIComponent(J.token)); const d = await r.json(); if (d.ok) { CLIENTS = d.clients || []; await kvPut("clients:" + J.id, CLIENTS); return; } } catch (e) { /* offline: use the saved list */ }
+  CLIENTS = (await kvGet("clients:" + J.id)) || [];
+}
+function clientRows(f) {
+  const q = (f || "").toLowerCase();
+  const l = CLIENTS.filter(c => !q || (c.name + " " + (c.address || "") + " " + (c.suburb || "")).toLowerCase().includes(q)).slice(0, 60);
+  return l.map(c => `<button class="block" data-client="${esc(c.id)}"><span class="t"><b>${esc(c.name)}</b><span>${esc(c.address || "")}${c.type ? " &middot; " + esc(c.type) : ""}</span></span><span class="go">&#9654;</span></button>`).join("") || `<div class="note">No client matches. Ask the office to add it to the list.</div>`;
+}
+function vClients() {
+  setFoot("");
+  app.innerHTML = hdr("Pool and spa maintenance", "jobsback", true) + `<div class="q">Which client are you at?</div>
+    <input class="write" id="csearch" placeholder="Type a name or street" style="min-height:0;height:56px"><div id="clist">${clientRows("")}</div>
+    <div class="ver">Version ${APP_VERSION} &middot; ${CLIENTS.length} clients on the list</div>`;
+  refreshStatus();
+}
+function vChub() {
+  const c = CLIENTS.find(x => x.id === S.client) || { name: S.client, address: "" };
+  const tabs = jobTabs(); const first = progress(tabs[0] || "").done === 0;
+  const blocks = tabs.map(t => {
+    const p = progress(t); const complete = p.total > 0 && p.done === p.total;
+    return `<button class="block ${complete ? "done" : ""} ${first && t === tabs[0] ? "start" : ""}" data-tab="${esc(t)}"><span class="t"><b>${esc(Q.tabs[t].title)}</b><span>${Q.tabs[t].scope === "clientvisit" ? "Visit " + esc(S.visit) + ": " : ""}${complete ? "Done" : p.done + " of " + p.total + " answered"}</span></span><span class="go">${complete ? "&#10003;" : "&#9654;"}</span></button>`;
+  }).join("");
+  app.innerHTML = hdr(c.name, "clients", true) +
+    `<div class="kv"><div><span>Address</span><b>${esc(c.address || "")}</b></div><div><span>Type</span><b>${esc(c.type || "")}</b></div><div><span>Plan</span><b>${esc(c.plan || "")}</b></div></div>
+     ${first ? `<div class="hint"><b>First visit</b>Fill in the profile first: what the pool or spa is, its size and its equipment. After that you only do the visit checks.</div>` : ""}
+     ${syncHtml()}<div class="count">Tap a big block.</div>${blocks}
+     <div class="row"><button class="small" data-act="clients">Change client</button></div><div class="ver">Version ${APP_VERSION} &middot; questions ${esc(Q.version)}</div>`;
+  setFoot(""); refreshStatus();
+}
+function volumeL() {
+  const v = parseFloat(val("PRO-07")); if (v > 0) return Math.round(v);
+  const L = parseFloat(val("PRO-04")), W = parseFloat(val("PRO-05")), D = parseFloat(val("PRO-06"));
+  if (!(L > 0 && W > 0 && D > 0)) return 0;
+  const sh = String(val("PRO-03") || ""); const f = /round/i.test(sh) ? 0.785 : /oval|kidney/i.test(sh) ? 0.85 : /octag/i.test(sh) ? 0.83 : 1;
+  return Math.round(L * W * D * f * 1000);
+}
+// Suggested doses: a guide from the readings and the volume. Targets are PROPOSED defaults (Brandon, 18 Oct 2026: yes to standard targets).
+const TARGET = { pool: { fc: [1, 3], ph: [7.2, 7.6], ta: [80, 120], ch: [200, 400], cya: [30, 50], salt: [3000, 4500] }, spa: { fc: [3, 5], ph: [7.2, 7.6], ta: [80, 120], ch: [150, 250], salt: [3000, 4500] } };
+function adviceHtml() {
+  const lit = volumeL(); const m3 = lit / 1000; const spa = /spa/i.test(String(val("PRO-01") || ""));
+  const T = spa ? TARGET.spa : TARGET.pool; const L = [];
+  const num = c => { const x = parseFloat(val(c)); return isNaN(x) ? null : x; };
+  const mid = r => (r[0] + r[1]) / 2, r1 = x => Math.round(x * 10) / 10, kg = g => g >= 1000 ? r1(g / 1000) + " kg" : Math.round(g) + " g";
+  if (!lit) return `<div class="note">The volume is not known yet. Fill in the length, width and average depth on the profile (or the volume), then come back here for doses.</div>`;
+  const fc = num("MNT-10"), ph = num("MNT-11"), ta = num("MNT-12"), ch = num("MNT-13"), cya = num("MNT-14"), salt = num("MNT-15"), temp = num("MNT-16");
+  if (fc !== null) { if (fc < T.fc[0]) { const need = mid(T.fc) - fc; L.push(`<b>Free chlorine ${fc} is low</b> (target ${T.fc[0]} to ${T.fc[1]}). To reach ${mid(T.fc)}: about ${Math.round(need * m3 * 8)} mL liquid chlorine 12.5%, or ${Math.round(need * m3 * 1.54)} g granular calcium hypochlorite 65%. Check the strength on the label.`); } else if (fc > T.fc[1]) L.push(`<b>Free chlorine ${fc} is high</b> (target ${T.fc[0]} to ${T.fc[1]}). Add no chlorine, leave the cover off in the sun, retest next visit.`); }
+  if (ph !== null) { if (ph > T.ph[1]) L.push(`<b>pH ${ph} is high</b> (target ${T.ph[0]} to ${T.ph[1]}). Add dry acid in small steps: first about ${Math.round(5 * m3)} g, circulate one hour, retest.`); else if (ph < T.ph[0]) L.push(`<b>pH ${ph} is low</b> (target ${T.ph[0]} to ${T.ph[1]}). Add pH plus (soda ash) in small steps: first about ${Math.round(5 * m3)} g, circulate one hour, retest.`); }
+  if (ta !== null) { if (ta < T.ta[0]) L.push(`<b>Alkalinity ${ta} is low</b> (target ${T.ta[0]} to ${T.ta[1]}). Add about ${kg((mid(T.ta) - ta) / 10 * 18 * m3)} sodium bicarbonate, retest next visit.`); else if (ta > T.ta[1]) L.push(`<b>Alkalinity ${ta} is high</b> (target ${T.ta[0]} to ${T.ta[1]}). Add acid in small steps with the pump running and aerate, retest next visit.`); }
+  if (ch !== null) { if (ch < T.ch[0]) L.push(`<b>Hardness ${ch} is low</b> (target ${T.ch[0]} to ${T.ch[1]}). Add about ${kg((mid(T.ch) - ch) * 1.45 * m3)} calcium chloride (77%), dissolved first.`); else if (ch > T.ch[1]) L.push(`<b>Hardness ${ch} is high</b> (target ${T.ch[0]} to ${T.ch[1]}). Dilute: drain and refill about ${Math.round((1 - mid(T.ch) / ch) * 100)}%.`); }
+  if (!spa && cya !== null) { if (cya < T.cya[0]) L.push(`<b>Stabiliser ${cya} is low</b> (target ${T.cya[0]} to ${T.cya[1]}). Add about ${kg((mid(T.cya) - cya) * m3)} stabiliser (cyanuric acid), dissolved in a sock in the skimmer.`); else if (cya > T.cya[1]) L.push(`<b>Stabiliser ${cya} is high</b> (target ${T.cya[0]} to ${T.cya[1]}). Chlorine works poorly above this. It only comes down by dilution: drain and refill about ${Math.round((1 - mid(T.cya) / cya) * 100)}% and stop trichlor tablets.`); }
+  if (salt !== null && salt < T.salt[0]) L.push(`<b>Salt ${salt} is low</b> (usually ${T.salt[0]} to ${T.salt[1]}, check the cell maker). Add about ${kg((mid(T.salt) - salt) * m3)} salt.`);
+  if (temp !== null && temp > 40) L.push(`<b>Water temperature ${temp} is too hot.</b> Switch the heater off and let it cool below 40.`);
+  const head = `<div class="hint"><b>${spa ? "Spa" : "Pool"} of about ${Math.round(lit)} litres</b>Doses are a guide. Add in steps, circulate, retest, and read the product label.</div>`;
+  return head + (L.length ? `<ul class="list">${L.map(x => `<li>${x}</li>`).join("")}</ul>` : `<div class="note">Everything entered is inside the target range. Nothing to dose.</div>`);
+}
 function vHub() {
+  if (startKind() === MAINT) return S.client ? vChub() : vClients();
   const tabs = jobTabs(); let all = 0, dn = 0;
   const blocks = tabs.map(t => {
     const p = progress(t); all += p.total; dn += p.done; const complete = p.total > 0 && p.done === p.total;
@@ -373,7 +439,8 @@ function vQ() {
   if (idx < 0) { idx = Math.max(0, list.findIndex(i => !has(i.code))); S.cur = list[idx] ? list[idx].code : ""; }
   const it = list[idx]; if (!it) { nav("hub"); return; }
   const p = progress(tab), a = val(it.code); let body = "";
-  if (it.kind === "pick") {
+  if (it.kind === "advice") { body = adviceHtml(); if (!has(it.code)) setAns(it.code, "shown"); }
+  else if (it.kind === "pick") {
     const sel = it.multi ? (Array.isArray(a) ? a : []) : [a];
     body = `<div class="opts">${it.opts.map(o => `<button class="opt ${it.multi ? "" : "single"} ${sel.includes(o) ? "on" : ""}" data-opt="${esc(o)}"><span class="box"></span>${esc(o)}</button>`).join("")}</div>`;
     const need = sel.some(x => /write it in the box|^other/i.test(x || ""));
@@ -384,7 +451,7 @@ function vQ() {
     `<div class="bar"><i style="width:${Math.round(p.done * 100 / p.total)}%"></i></div>
      <div class="count">Question ${idx + 1} of ${list.length}${it.multi ? " &middot; pick all that apply" : ""}</div>
      ${secOf(tab, it.code) ? `<div class="sec">${esc(secOf(tab, it.code))}</div>` : ""}
-     <div class="q">${esc(it.q)}</div><div class="hint"><b>What to look for</b>${esc(it.hint)}</div>${body}${photoUi(K(it.code))}`;
+     <div class="q">${esc(it.q)}</div><div class="hint"><b>What to look for</b>${esc(it.hint)}</div>${body}${it.kind === "advice" ? "" : photoUi(K(it.code))}`;
   const last = idx === list.length - 1;
   setFoot(`<button class="btn alt" data-act="prev" ${idx === 0 ? "disabled" : ""}>Back</button><button class="btn" data-act="next">${last ? "Finish" : (has(it.code) ? "Next" : "Skip")}</button>`); refreshStatus();
 }
@@ -413,7 +480,8 @@ document.addEventListener("click", async e => {
   const b = e.target.closest("button"); if (!b) return;
   const d = b.dataset;
   if (d.open) { await openJob(d.open); return; }
-  if (d.kind) { setAns("START-01", d.kind, { tab: "START", q: "Repair, new installation or both" }); if (d.kind === ROUTINE) { nav("hub"); return; } S.pickStage = d.kind === "New installation quote" ? "new" : "repair"; nav("pick"); return; }
+  if (d.client) { S.client = d.client; render(); await pull(); render(); return; }
+  if (d.kind) { setAns("START-01", d.kind, { tab: "START", q: "Repair, new installation or both" }); if (d.kind === MAINT) { await loadClients(); nav("hub"); return; } if (d.kind === ROUTINE) { nav("hub"); return; } S.pickStage = d.kind === "New installation quote" ? "new" : "repair"; nav("pick"); return; }
   if (d.eq) {
     const code = S.pickStage === "repair" ? "START-02" : "START-03"; const arr = startList(code).slice(); const i = arr.indexOf(d.eq);
     if (i >= 0) arr.splice(i, 1); else arr.push(d.eq);
@@ -430,7 +498,8 @@ document.addEventListener("click", async e => {
     return;
   }
   const act = d.act; if (!act) return;
-  if (act === "kind") nav("kind"); else if (act === "hub") nav("hub"); else if (act === "finish") nav("done"); else if (act === "gen") nav("gen");
+  if (act === "clients") { S.client = ""; nav("hub"); }
+  else if (act === "kind") nav("kind"); else if (act === "hub") nav("hub"); else if (act === "finish") nav("done"); else if (act === "gen") nav("gen");
   else if (act === "jobsback") { S.view = "jobs"; history.replaceState(null, "", location.pathname); render(); }
   else if (act === "pickNext") { if (S.pickStage === "repair" && startKind() === "Both") { S.pickStage = "new"; nav("pick"); } else nav("hub"); }
   else if (act === "next") advance(1); else if (act === "prev") advance(-1);
@@ -438,7 +507,8 @@ document.addEventListener("click", async e => {
 });
 document.addEventListener("input", e => {
   const t = e.target;
-  if (t.id === "other") setOther(S.cur, t.value);
+  if (t.id === "csearch") { const el = document.getElementById("clist"); if (el) el.innerHTML = clientRows(t.value); }
+  else if (t.id === "other") setOther(S.cur, t.value);
   else if (t.id === "textin" || t.id === "numin") setAns(S.cur, t.value);
 });
 for (const id of ["cam", "lib", "vcam"]) document.getElementById(id).addEventListener("change", e => { const f = Array.from(e.target.files); e.target.value = ""; if (f.length) addPhotoFiles(f); });
@@ -459,12 +529,14 @@ async function openJob(id, token) {
   const keys = (await kvGet("jobs")) || []; if (!keys.includes(id)) { keys.push(id); await kvPut("jobs", keys); }
   await kvPut("job:" + id, J);
   S.view = startKind() ? "hub" : "kind"; render();
-  await pull(); render(); sync(false);
+  await pull(); if (S.view === "kind" && startKind()) S.view = "hub";
+  if (startKind() === MAINT) await loadClients();
+  render(); sync(false);
 }
 (async function boot() {
   render();
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
-  try { await loadQuestions(); REP = new Set(); for (const k in Q.tabs) if (Q.tabs[k].rep) Q.tabs[k].items.forEach(i => { if (i.code) REP.add(i.code); }); } catch (e) { app.innerHTML = hdr("HWX Site Visit") + `<div class="note">Could not load the questions. Open the link once with signal.</div>`; return; }
+  try { await loadQuestions(); SCOPE = new Map(); for (const k in Q.tabs) { const sc = Q.tabs[k].rep ? "r" : (Q.tabs[k].scope === "client" ? "c" : (Q.tabs[k].scope === "clientvisit" ? "cv" : "")); if (sc) Q.tabs[k].items.forEach(i => { if (i.code) SCOPE.set(i.code, sc); }); } } catch (e) { app.innerHTML = hdr("HWX Site Visit") + `<div class="note">Could not load the questions. Open the link once with signal.</div>`; return; }
   const job = params.get("job"), t = params.get("t");
   if (job) await openJob(job, t); else { S.view = "jobs"; render(); }
   if ("serviceWorker" in navigator) {
