@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>HWX Site Visit</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="HWX Visit">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0b4f6c">
+<style>
+/* Field app: giant blocks, one question per screen, system fonts only so it works with no signal. */
+:root {
+  --bg: #eef3f5; --surface: #ffffff; --ink: #12262e; --muted: #53686f; --head: #0b4f6c; --head-ink: #ffffff;
+  --line: #9db3bb; --pick: #fff176; --pick-ink: #12262e; --on: #0b4f6c; --on-ink: #ffffff; --done: #2e7d4f; --done-bg: #d5ecdc;
+  --hint-bg: #dcecf9; --hint-ink: #0d4799; --warn: #b3261e; --warn-bg: #fde7e4; --disabled-bg: #dfe5e8;
+  --f-head: 'Avenir Next Condensed', 'Arial Narrow', 'Roboto Condensed', sans-serif;
+  --f-body: -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root { --bg: #0e1a1f; --surface: #172830; --ink: #eaf2f5; --muted: #9db3bb; --line: #3d5963; --pick: #4a4300; --pick-ink: #fff6a8; --on: #7cc4e0; --on-ink: #06222d; --done: #7fd19c; --done-bg: #1c3a2a; --hint-bg: #16324a; --hint-ink: #a9cdf7; --warn: #ff8a80; --warn-bg: #3a1c1a; --disabled-bg: #22343c; color-scheme: dark; } }
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 20px; line-height: 1.3;
+  padding: 0 max(16px, env(safe-area-inset-right)) 150px max(16px, env(safe-area-inset-left)); -webkit-tap-highlight-color: transparent; }
+button { font-family: inherit; color: inherit; cursor: pointer; }
+.top { position: sticky; top: 0; z-index: 5; background: var(--head); color: var(--head-ink); margin: 0 calc(-1 * max(16px, env(safe-area-inset-right))) 0 calc(-1 * max(16px, env(safe-area-inset-left)));
+  padding: calc(10px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 10px max(16px, env(safe-area-inset-left)); display: flex; align-items: center; gap: 12px; min-height: 68px; }
+.top h1 { font-family: var(--f-head); font-weight: 700; font-size: 28px; letter-spacing: .02em; text-transform: uppercase; margin: 0; flex: 1; min-width: 0; line-height: 1.05; }
+.top .back { background: rgba(255,255,255,.18); border: 2px solid rgba(255,255,255,.6); color: #fff; border-radius: 10px; min-height: 52px; padding: 0 16px; font-weight: 700; font-size: 20px; flex: none; }
+.pill { flex: none; font-size: 15px; font-weight: 700; padding: 6px 10px; border-radius: 999px; background: rgba(255,255,255,.2); border: 2px solid rgba(255,255,255,.55); max-width: 42vw; text-align: center; line-height: 1.1; }
+.pill.wait { background: #ffd54f; color: #3a2d00; border-color: #ffd54f; }
+.bar { height: 10px; background: var(--disabled-bg); border-radius: 5px; overflow: hidden; margin: 14px 0 4px; }
+.bar > i { display: block; height: 100%; background: var(--done); }
+.count { color: var(--muted); font-weight: 600; font-size: 18px; margin-bottom: 8px; }
+.q { font-family: var(--f-head); font-weight: 700; font-size: 38px; line-height: 1.05; margin: 10px 0 14px; }
+.sec { font-family: var(--f-head); font-weight: 600; font-size: 20px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-top: 12px; }
+.hint { background: var(--hint-bg); color: var(--hint-ink); border-radius: 12px; padding: 14px 16px; font-size: 19px; font-weight: 500; margin-bottom: 16px; }
+.hint b { text-transform: uppercase; letter-spacing: .05em; font-size: 15px; display: block; margin-bottom: 2px; }
+.note { background: var(--warn-bg); color: var(--warn); border-radius: 12px; padding: 14px 16px; font-size: 19px; font-weight: 600; margin: 14px 0; }
+.opts { display: flex; flex-direction: column; gap: 12px; }
+.opt { width: 100%; min-height: 78px; text-align: left; padding: 14px 18px; font-size: 24px; font-weight: 700; line-height: 1.15; background: var(--pick); color: var(--pick-ink);
+  border: 3px solid var(--line); border-radius: 14px; display: flex; align-items: center; gap: 14px; }
+.opt .box { flex: none; width: 34px; height: 34px; border: 3px solid currentColor; border-radius: 8px; display: grid; place-items: center; font-size: 26px; line-height: 1; }
+.opt.single .box { border-radius: 50%; }
+.opt.on { background: var(--on); color: var(--on-ink); border-color: var(--on); }
+.opt.on .box::after { content: "\2713"; }
+.other, .write { width: 100%; font: inherit; font-size: 22px; padding: 14px; border: 3px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); min-height: 120px; margin-top: 12px; }
+.num { min-height: 78px; font-size: 32px; font-weight: 700; }
+.foot { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--bg); border-top: 3px solid var(--line);
+  padding: 12px max(16px, env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); display: flex; gap: 12px; }
+.btn { flex: 1; min-height: 78px; font-size: 26px; font-weight: 700; border-radius: 14px; border: 3px solid var(--head); background: var(--head); color: var(--head-ink); font-family: var(--f-head); text-transform: uppercase; letter-spacing: .04em; }
+.btn.alt { background: var(--surface); color: var(--head); flex: .55; }
+.btn.photo { background: var(--surface); color: var(--head); width: 100%; margin-top: 16px; flex: none; }
+.btn[disabled] { background: var(--disabled-bg); color: var(--muted); border-color: var(--line); }
+.block { width: 100%; min-height: 128px; text-align: left; border: 4px solid var(--head); border-radius: 18px; background: var(--surface); padding: 16px 18px; display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+.block .t { flex: 1; min-width: 0; }
+.block .t b { display: block; font-family: var(--f-head); font-size: 36px; line-height: 1.02; text-transform: uppercase; letter-spacing: .02em; }
+.block .t span { display: block; font-size: 20px; color: var(--muted); font-weight: 600; margin-top: 6px; }
+.block .go { flex: none; font-family: var(--f-head); font-size: 54px; color: var(--head); line-height: 1; }
+.block.done { border-color: var(--done); background: var(--done-bg); }
+.block.done .go { color: var(--done); }
+.block.start { background: var(--head); color: var(--head-ink); }
+.block.start .t span, .block.start .go { color: var(--head-ink); }
+.small { background: none; border: 0; color: var(--muted); font-size: 18px; text-decoration: underline; padding: 14px 0; min-height: 52px; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; }
+.kv { display: grid; gap: 6px; background: var(--surface); border: 2px solid var(--line); border-radius: 12px; padding: 12px 14px; margin: 14px 0; }
+.kv div { display: flex; justify-content: space-between; gap: 12px; font-size: 18px; }
+.kv span { color: var(--muted); }
+.kv b { text-align: right; }
+.sync { background: var(--surface); border: 3px solid var(--line); border-radius: 14px; padding: 14px 16px; margin: 14px 0; }
+.sync.wait { border-color: #e0a800; background: #fff6d6; color: #3a2d00; }
+.sync b { display: block; font-size: 22px; }
+.sync .btn { margin-top: 12px; width: 100%; flex: none; min-height: 68px; }
+.thumbs { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.thumbs img { width: 76px; height: 76px; object-fit: cover; border-radius: 10px; border: 3px solid var(--line); }
+.list { margin: 0; padding-left: 22px; } .list li { margin: 6px 0; }
+.ver { color: var(--muted); font-size: 14px; text-align: center; margin: 30px 0 10px; }
+input[type=file] { display: none; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="foot" class="foot" hidden></div>
+<input type="file" id="cam" accept="image/*" capture="environment">
+<input type="file" id="lib" accept="image/*" multiple>
+<script>
+"use strict";
+const APP_VERSION = "1.0";
+const API = "https://script.google.com/macros/s/AKfycbwdahF6EsK6Xdo8Wy888LWhHfXSJZK7zliP-njXFUaqZr4txa3Q9MSPYqgxzC-8tLUMBg/exec";
+const OTHER = "Other (write it in the box below)";
+const EQ_REPAIR = ["Acrylic spa","Concrete spa","Pool equipment","Sauna or steam room","Water feature","Borehole or water treatment","Heat pump"];
+const EQ_NEW = ["Acrylic spa","Concrete spa","Sauna","Steam room","Water feature","Domestic pool","Water reticulation","Borehole or water treatment","Deck","Heat pump","Commercial pool","Natural pool (pilot only)"];
+const REPAIR_TAB = {"Acrylic spa":"9a Spa repair","Concrete spa":"9a Spa repair","Pool equipment":"9b Pool repair","Heat pump":"9b Pool repair","Sauna or steam room":"9d Sauna and steam repair","Water feature":"9e Water feature repair","Borehole or water treatment":"9c Water treatment repair"};
+const NEW_TAB = {"Acrylic spa":"2 Spa","Concrete spa":"2 Spa","Sauna":"3 Sauna","Steam room":"4 Steam","Water feature":"5 Water feature","Domestic pool":"6 Pool","Water reticulation":"7 Reticulation","Borehole or water treatment":"8 Borehole","Deck":"10 Deck","Heat pump":"13 Heat pump","Commercial pool":"11 Commercial pool","Natural pool (pilot only)":"12 Natural pool"};
+const KINDS = ["Repair quote","New installation quote","Both"];
+
+/* ---------- tiny IndexedDB wrapper ---------- */
+let dbp;
+function db() {
+  if (!dbp) dbp = new Promise((res, rej) => {
+    const r = indexedDB.open("hwx-visit", 1);
+    r.onupgradeneeded = () => { const d = r.result; d.createObjectStore("kv"); d.createObjectStore("photos", { keyPath: "id", autoIncrement: true }); };
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  });
+  return dbp;
+}
+async function tx(store, mode, fn) {
+  const d = await db();
+  return new Promise((res, rej) => { const t = d.transaction(store, mode); const out = fn(t.objectStore(store)); t.oncomplete = () => res(out && out.result !== undefined ? out.result : undefined); t.onerror = () => rej(t.error); });
+}
+const kvGet = k => tx("kv", "readonly", s => s.get(k));
+const kvPut = (k, v) => tx("kv", "readwrite", s => s.put(v, k));
+const phAll = () => tx("photos", "readonly", s => s.getAll());
+const phAdd = o => tx("photos", "readwrite", s => s.add(o));
+const phPut = o => tx("photos", "readwrite", s => s.put(o));
+
+/* ---------- state ---------- */
+let Q = null;               // questions {version, tabs}
+let J = null;               // current job {id, token, client, address, folder_name, ans:{code:{v,o,ts,tab,q,dirty}}}
+let S = { view: "boot", tab: "", cur: "", pickStage: "repair" };
+let photos = [];            // photo records for this job (blobs)
+let syncing = false, lastErr = "", lastOk = "";
+const app = document.getElementById("app"), foot = document.getElementById("foot");
+const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const params = new URLSearchParams(location.search);
+const deviceId = (() => { let d = localStorage.getItem("hwx-device"); if (!d) { d = "dev-" + Math.random().toString(36).slice(2, 8); try { localStorage.setItem("hwx-device", d); } catch (e) {} } return d; })();
+
+/* ---------- answers ---------- */
+function ansOf(code) { return J.ans[code]; }
+function val(code) { const a = ansOf(code); return a ? a.v : undefined; }
+function has(code) { const v = val(code); return Array.isArray(v) ? v.length > 0 : (v !== undefined && v !== null && String(v).trim() !== ""); }
+function flat(code) { const v = val(code); return (Array.isArray(v) ? v.join(" ") : (v || "")).toLowerCase(); }
+let saveTimer;
+function setAns(code, v, extra) {
+  const it = findItem(code) || {};
+  const prev = J.ans[code] || {};
+  J.ans[code] = Object.assign({ o: prev.o || "", tab: it.tab || prev.tab || "", q: it.q || prev.q || "" }, extra || {}, { v: v, ts: new Date().toISOString(), dirty: true });
+  persist(); scheduleSync();
+}
+function setOther(code, text) { const a = J.ans[code] || { v: "", tab: "", q: "" }; a.o = text; a.ts = new Date().toISOString(); a.dirty = true; J.ans[code] = a; persist(); scheduleSync(); }
+function persist() { clearTimeout(saveTimer); saveTimer = setTimeout(() => kvPut("job:" + J.id, J).catch(() => {}), 150); }
+function findItem(code) { if (!Q) return null; for (const k in Q.tabs) for (const it of Q.tabs[k].items) if (it.code === code) return Object.assign({ tab: k }, it); return null; }
+
+/* ---------- job flow ---------- */
+function startKind() { return val("START-01") || ""; }
+function startList(c) { const v = val(c); return Array.isArray(v) ? v : []; }
+function jobTabs() {
+  const t = ["1 Site"]; const add = k => { if (k && !t.includes(k)) t.push(k); };
+  if (startKind() !== "New installation quote") startList("START-02").forEach(e => add(REPAIR_TAB[e]));
+  if (startKind() !== "Repair quote") startList("START-03").forEach(e => add(NEW_TAB[e]));
+  t.push("14 Measurements", "15 Time estimate");
+  return t.filter(k => Q.tabs[k]);
+}
+function visible(it) {
+  if (!it.code) return false; if (!it.cond) return true;
+  const [c, kws] = it.cond.split("~"); const a = flat(c);
+  return kws.split("/").some(k => a.includes(k.toLowerCase()));
+}
+function qList(tab) { return Q.tabs[tab].items.filter(visible); }
+function progress(tab) { const l = qList(tab); return { done: l.filter(i => has(i.code)).length, total: l.length }; }
+function secOf(tab, code) { let s = ""; for (const it of Q.tabs[tab].items) { if (it.sec) s = it.sec; if (it.code === code) return s; } return s; }
+
+/* ---------- sync ---------- */
+function pending() {
+  const a = Object.values(J.ans).filter(x => x.dirty).length;
+  const p = photos.filter(x => !x.sent).length;
+  return { a, p, n: a + p };
+}
+let syncTimer;
+function scheduleSync() { clearTimeout(syncTimer); syncTimer = setTimeout(() => sync(false), 2500); refreshStatus(); }
+async function post(body, ms) {
+  const c = new AbortController(); const to = setTimeout(() => c.abort(), ms || 30000);
+  try {
+    const r = await fetch(API, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(Object.assign({ job: J.id, t: J.token, device: deviceId }, body)), signal: c.signal });
+    return await r.json();
+  } finally { clearTimeout(to); }
+}
+async function sync(manual) {
+  if (syncing || !J || !J.token) return;
+  syncing = true; lastErr = ""; refreshStatus();
+  try {
+    // 1) answers
+    const dirty = Object.entries(J.ans).filter(([, a]) => a.dirty);
+    if (dirty.length) {
+      const sent = dirty.map(([code, a]) => ({ code, a, ts: a.ts }));
+      const items = dirty.map(([code, a]) => ({ code, answer: Array.isArray(a.v) ? a.v.join("; ") : a.v, other: a.o || "", tab: a.tab || "", q: a.q || "", ts: a.ts }));
+      const r = await post({ action: "answers", items }, 30000);
+      if (!r.ok) throw new Error(r.error || "server said no");
+      sent.forEach(s => { const cur = J.ans[s.code]; if (cur && cur.ts === s.ts) cur.dirty = false; });
+      persist();
+    }
+    // 2) photos, one at a time
+    for (const p of photos.filter(x => !x.sent)) {
+      const b64 = await blobToB64(p.blob);
+      const r = await post({ action: "photo", code: p.code, name: p.name, mime: "image/jpeg", b64, ts: p.ts }, 90000);
+      if (!r.ok) throw new Error(r.error || "photo failed");
+      p.sent = true; p.driveId = r.id; await phPut(p); refreshStatus();
+    }
+    lastOk = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  } catch (e) {
+    lastErr = (e && e.name === "AbortError") ? "Slow or no signal" : "No signal or server busy";
+  } finally { syncing = false; refreshStatus(); }
+}
+function blobToB64(b) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(b); }); }
+async function pull() {
+  if (!J || !J.token) return;
+  try {
+    const r = await fetch(API + "?action=job&job=" + encodeURIComponent(J.id) + "&t=" + encodeURIComponent(J.token));
+    const d = await r.json(); if (!d.ok) return;
+    J.client = d.job.client; J.address = d.job.address; J.folder_name = d.job.folder_name;
+    d.answers.forEach(sa => {
+      const mine = J.ans[sa.code];
+      if (!mine || (!mine.dirty && new Date(sa.ts) > new Date(mine.ts))) {
+        const it = findItem(sa.code) || {};
+        const multi = it.multi || ["START-02", "START-03"].includes(sa.code);
+        J.ans[sa.code] = { v: multi ? String(sa.answer || "").split("; ").filter(Boolean) : sa.answer, o: sa.other || "", tab: it.tab || "", q: it.q || "", ts: sa.ts, dirty: false };
+      }
+    });
+    persist();
+  } catch (e) { /* offline is fine */ }
+}
+function refreshStatus() {
+  const el = document.getElementById("pill"); if (!el || !J) return;
+  const p = pending();
+  el.textContent = syncing ? "Sending..." : (p.n ? p.n + " waiting" : "All sent");
+  el.className = "pill" + (p.n && !syncing ? " wait" : "");
+  const box = document.getElementById("syncbox");
+  if (box) box.outerHTML = syncHtml();
+}
+function syncHtml() {
+  const p = pending();
+  let msg = syncing ? "Sending now..." : (p.n ? `${p.a} answers and ${p.p} photos are waiting to send.` : "Everything is sent to the office." + (lastOk ? " Last sent " + lastOk + "." : ""));
+  if (lastErr && p.n) msg += " " + lastErr + ". It will try again by itself.";
+  return `<div id="syncbox" class="sync ${p.n ? "wait" : ""}"><b>${esc(msg)}</b>${p.n ? `<button class="btn" data-act="send" ${syncing ? "disabled" : ""}>Send now</button>` : ""}</div>`;
+}
+
+/* ---------- photos ---------- */
+let photoFor = "GEN";
+async function addPhotoFiles(files) {
+  for (const f of files) {
+    try {
+      const blob = await shrink(f);
+      const n = photos.filter(x => x.code === photoFor).reduce((m, x) => Math.max(m, x.n), 0) + 1;
+      const rec = { job: J.id, code: photoFor, n, name: photoFor + "_" + n + ".jpg", blob, ts: new Date().toISOString(), sent: false };
+      rec.id = await phAdd(rec); photos.push(rec);
+    } catch (e) { lastErr = "A photo could not be read"; }
+  }
+  render(); scheduleSync();
+}
+async function shrink(file) {
+  const bmp = await (window.createImageBitmap ? createImageBitmap(file, { imageOrientation: "from-image" }) : loadImg(file));
+  const max = 1600, sc = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  const c = document.createElement("canvas"); c.width = Math.round(bmp.width * sc); c.height = Math.round(bmp.height * sc);
+  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+  return new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error("blob")), "image/jpeg", 0.72));
+}
+function loadImg(file) { return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(file); }); }
+function photoUi(code) {
+  const mine = photos.filter(p => p.code === code);
+  return `<button class="btn photo" data-photo="${esc(code)}">Take photo${mine.length ? " (" + mine.length + ")" : ""}</button>` +
+    (mine.length ? `<div class="thumbs">${mine.slice(-6).map(p => `<img alt="photo ${p.n}" src="${URL.createObjectURL(p.blob)}">`).join("")}</div>` : "");
+}
+
+/* ---------- views ---------- */
+function nav(v, extra) { Object.assign(S, { view: v }, extra || {}); render(); window.scrollTo(0, 0); }
+function setFoot(h) { foot.innerHTML = h; foot.hidden = !h; }
+function hdr(title, back, pill) { return `<div class="top">${back ? `<button class="back" data-act="${back}">&#9664; Back</button>` : ""}<h1>${esc(title)}</h1>${pill ? `<div id="pill" class="pill"></div>` : ""}</div>`; }
+function render() {
+  if (S.view === "boot") { app.innerHTML = hdr("HWX Site Visit") + `<div class="q">Loading...</div>`; setFoot(""); return; }
+  if (S.view === "jobs") return vJobs();
+  if (S.view === "kind") return vKind();
+  if (S.view === "pick") return vPick();
+  if (S.view === "hub") return vHub();
+  if (S.view === "q") return vQ();
+  if (S.view === "done") return vDone();
+  if (S.view === "gen") return vGen();
+  refreshStatus();
+}
+async function vJobs() {
+  setFoot("");
+  const keys = (await kvGet("jobs")) || [];
+  let html = "";
+  for (const id of keys) { const j = await kvGet("job:" + id); if (j) html += `<button class="block" data-open="${esc(id)}"><span class="t"><b>${esc(j.address || id)}</b><span>${esc(j.client || "")}</span></span><span class="go">&#9654;</span></button>`; }
+  app.innerHTML = hdr("HWX Site Visit") + `<div class="q">${keys.length ? "Your jobs" : "Open the job link"}</div>
+    <div class="hint"><b>How it works</b>Tap the job link in the client's "00 A SITE VISIT" folder in Google Drive. The job opens here and stays on this phone, even with no signal.</div>${html}<div class="ver">Version ${APP_VERSION}</div>`;
+}
+function vKind() {
+  setFoot("");
+  app.innerHTML = hdr(J.address || "Site visit", "jobsback", true) +
+    `<div class="q">Is this a repair quote, a new installation quote, or both?</div>
+     <div class="hint"><b>What to look for</b>Ask the client what they want us to do on this visit.</div>
+     <div class="opts">${KINDS.map(o => `<button class="opt single ${startKind() === o ? "on" : ""}" data-kind="${esc(o)}"><span class="box"></span>${esc(o)}</button>`).join("")}</div>`;
+  refreshStatus();
+}
+function vPick() {
+  const rep = S.pickStage === "repair"; const list = rep ? EQ_REPAIR : EQ_NEW; const code = rep ? "START-02" : "START-03"; const sel = startList(code);
+  app.innerHTML = hdr(rep ? "Repair" : "New installation", "kind", true) +
+    `<div class="q">${rep ? "What are we repairing?" : "What are we quoting on?"}</div>
+     <div class="hint"><b>What to look for</b>Tick every item on this job. You can pick more than one.</div>
+     <div class="opts">${list.map(o => `<button class="opt ${sel.includes(o) ? "on" : ""}" data-eq="${esc(o)}"><span class="box"></span>${esc(o)}</button>`).join("")}</div>`;
+  setFoot(`<button class="btn" data-act="pickNext" ${sel.length ? "" : "disabled"}>Next</button>`); refreshStatus();
+}
+function vHub() {
+  const tabs = jobTabs(); let all = 0, dn = 0;
+  const blocks = tabs.map(t => {
+    const p = progress(t); all += p.total; dn += p.done; const complete = p.total > 0 && p.done === p.total;
+    return `<button class="block ${complete ? "done" : ""} ${p.done === 0 && t === "1 Site" ? "start" : ""}" data-tab="${esc(t)}"><span class="t"><b>${esc(Q.tabs[t].title)}</b><span>${complete ? "Done" : p.done + " of " + p.total + " answered"}</span></span><span class="go">${complete ? "&#10003;" : "&#9654;"}</span></button>`;
+  }).join("");
+  const gp = photos.filter(p => p.code === "GEN").length;
+  app.innerHTML = hdr("Your jobs", "jobsback", true) +
+    `<div class="kv"><div><span>Client</span><b>${esc(J.client)}</b></div><div><span>Address</span><b>${esc(J.address)}</b></div><div><span>Visit</span><b>${esc(startKind())}</b></div>
+       ${startList("START-02").length && startKind() !== "New installation quote" ? `<div><span>Repairs</span><b>${esc(startList("START-02").join(", "))}</b></div>` : ""}
+       ${startList("START-03").length && startKind() !== "Repair quote" ? `<div><span>New</span><b>${esc(startList("START-03").join(", "))}</b></div>` : ""}
+       <div><span>Answered</span><b>${dn} of ${all}</b></div></div>
+     <div class="bar"><i style="width:${all ? Math.round(dn * 100 / all) : 0}%"></i></div>
+     ${syncHtml()}
+     <div class="count">Tap a big block. Come back here when it is done.</div>${blocks}
+     <button class="block" data-act="gen"><span class="t"><b>Extra photos</b><span>${gp} photos not tied to a question</span></span><span class="go">&#9654;</span></button>
+     <button class="block" data-act="finish"><span class="t"><b>Before you leave site</b><span>Check what is still unanswered</span></span><span class="go">&#9654;</span></button>
+     <div class="row"><button class="small" data-act="kind">Change job type</button></div><div class="ver">Version ${APP_VERSION} &middot; questions ${esc(Q.version)}</div>`;
+  setFoot(""); refreshStatus();
+}
+function vQ() {
+  const tab = S.tab, list = qList(tab); let idx = list.findIndex(i => i.code === S.cur);
+  if (idx < 0) { idx = Math.max(0, list.findIndex(i => !has(i.code))); S.cur = list[idx] ? list[idx].code : ""; }
+  const it = list[idx]; if (!it) { nav("hub"); return; }
+  const p = progress(tab), a = val(it.code); let body = "";
+  if (it.kind === "pick") {
+    const sel = it.multi ? (Array.isArray(a) ? a : []) : [a];
+    body = `<div class="opts">${it.opts.map(o => `<button class="opt ${it.multi ? "" : "single"} ${sel.includes(o) ? "on" : ""}" data-opt="${esc(o)}"><span class="box"></span>${esc(o)}</button>`).join("")}</div>`;
+    if (sel.includes(OTHER)) body += `<textarea class="other" id="other" placeholder="Write what you saw">${esc((ansOf(it.code) || {}).o || "")}</textarea>`;
+  } else if (it.kind === "num") body = `<input class="write num" id="numin" inputmode="decimal" placeholder="Type a number" value="${esc(a || "")}">`;
+  else body = `<textarea class="write" id="textin" placeholder="Type here (keep it short)">${esc(a || "")}</textarea>`;
+  app.innerHTML = hdr(Q.tabs[tab].title, "hub", true) +
+    `<div class="bar"><i style="width:${Math.round(p.done * 100 / p.total)}%"></i></div>
+     <div class="count">Question ${idx + 1} of ${list.length}${it.multi ? " &middot; pick all that apply" : ""}</div>
+     ${secOf(tab, it.code) ? `<div class="sec">${esc(secOf(tab, it.code))}</div>` : ""}
+     <div class="q">${esc(it.q)}</div><div class="hint"><b>What to look for</b>${esc(it.hint)}</div>${body}${photoUi(it.code)}`;
+  const last = idx === list.length - 1;
+  setFoot(`<button class="btn alt" data-act="prev" ${idx === 0 ? "disabled" : ""}>Back</button><button class="btn" data-act="next">${last ? "Finish" : (has(it.code) ? "Next" : "Skip")}</button>`); refreshStatus();
+}
+function vGen() {
+  app.innerHTML = hdr("Extra photos", "hub", true) + `<div class="q">Photos of anything else</div><div class="hint"><b>What to look for</b>Take photos of the work area, the access route, the DB board and the equipment space.</div>${photoUi("GEN")}`;
+  setFoot(`<button class="btn" data-act="hub">Back to jobs</button>`); refreshStatus();
+}
+function vDone() {
+  const missing = [], notSure = [];
+  jobTabs().forEach(t => qList(t).forEach(i => { if (!has(i.code)) missing.push({ t, i }); else if (/not sure/i.test(flat(i.code))) notSure.push({ t, i }); }));
+  app.innerHTML = hdr("Before you leave", "hub", true) + `<div class="q">${missing.length ? missing.length + " questions not answered" : "Everything is answered"}</div>
+    ${syncHtml()}
+    ${missing.length ? `<ul class="list">${missing.slice(0, 40).map(m => `<li><b>${esc(Q.tabs[m.t].title)}:</b> ${esc(m.i.q)}</li>`).join("")}${missing.length > 40 ? `<li>and ${missing.length - 40} more</li>` : ""}</ul>` : ""}
+    ${notSure.length ? `<div class="q" style="font-size:28px">Marked not sure: ${notSure.length}</div><ul class="list">${notSure.slice(0, 20).map(m => `<li>${esc(m.i.q)}</li>`).join("")}</ul>` : ""}
+    <div class="note">Do not leave site until the box above says Everything is sent. Get a signal and tap Send now.</div>`;
+  setFoot(`<button class="btn" data-act="hub">Back to jobs</button>`); refreshStatus();
+}
+
+/* ---------- events ---------- */
+function advance(dir) {
+  const list = qList(S.tab); const idx = list.findIndex(i => i.code === S.cur);
+  if (dir > 0) { if (idx >= list.length - 1) { nav("hub"); return; } S.cur = list[idx + 1].code; } else if (idx > 0) S.cur = list[idx - 1].code;
+  render(); window.scrollTo(0, 0);
+}
+document.addEventListener("click", async e => {
+  const b = e.target.closest("button"); if (!b) return;
+  const d = b.dataset;
+  if (d.open) { await openJob(d.open); return; }
+  if (d.kind) { setAns("START-01", d.kind, { tab: "START", q: "Repair, new installation or both" }); S.pickStage = d.kind === "New installation quote" ? "new" : "repair"; nav("pick"); return; }
+  if (d.eq) {
+    const code = S.pickStage === "repair" ? "START-02" : "START-03"; const arr = startList(code).slice(); const i = arr.indexOf(d.eq);
+    if (i >= 0) arr.splice(i, 1); else arr.push(d.eq);
+    setAns(code, arr, { tab: "START", q: S.pickStage === "repair" ? "What are we repairing" : "What are we quoting on" }); const y = scrollY; render(); scrollTo(0, y); return;
+  }
+  if (d.tab) { S.tab = d.tab; const l = qList(S.tab); const f = l.find(i => !has(i.code)) || l[0]; S.cur = f ? f.code : ""; nav("q"); return; }
+  if (d.photo) { photoFor = d.photo; document.getElementById("cam").click(); return; }
+  if (d.opt !== undefined) {
+    const it = qList(S.tab).find(i => i.code === S.cur), o = d.opt;
+    if (it.multi) { const arr = (Array.isArray(val(it.code)) ? val(it.code) : []).slice(); const i = arr.indexOf(o); if (i >= 0) arr.splice(i, 1); else arr.push(o); setAns(it.code, arr); const y = scrollY; render(); scrollTo(0, y); }
+    else { setAns(it.code, o); render(); if (o !== OTHER) setTimeout(() => advance(1), 260); }
+    return;
+  }
+  const act = d.act; if (!act) return;
+  if (act === "kind") nav("kind"); else if (act === "hub") nav("hub"); else if (act === "finish") nav("done"); else if (act === "gen") nav("gen");
+  else if (act === "jobsback") { S.view = "jobs"; history.replaceState(null, "", location.pathname); render(); }
+  else if (act === "pickNext") { if (S.pickStage === "repair" && startKind() === "Both") { S.pickStage = "new"; nav("pick"); } else nav("hub"); }
+  else if (act === "next") advance(1); else if (act === "prev") advance(-1);
+  else if (act === "send") { await sync(true); }
+});
+document.addEventListener("input", e => {
+  const t = e.target;
+  if (t.id === "other") setOther(S.cur, t.value);
+  else if (t.id === "textin" || t.id === "numin") setAns(S.cur, t.value);
+});
+document.getElementById("cam").addEventListener("change", e => { const f = Array.from(e.target.files); e.target.value = ""; if (f.length) addPhotoFiles(f); });
+window.addEventListener("online", () => sync(false));
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") sync(false); });
+
+/* ---------- boot ---------- */
+async function loadQuestions() {
+  try { const r = await fetch("questions.json", { cache: "no-cache" }); if (r.ok) { Q = await r.json(); return; } } catch (e) {}
+  const r2 = await fetch("questions.json"); Q = await r2.json();
+}
+async function openJob(id, token) {
+  let j = await kvGet("job:" + id);
+  if (!j) j = { id, token: token || "", client: "", address: "", folder_name: "", ans: {} };
+  if (token && j.token !== token) j.token = token;
+  J = j;
+  photos = (await phAll()).filter(p => p.job === id);
+  const keys = (await kvGet("jobs")) || []; if (!keys.includes(id)) { keys.push(id); await kvPut("jobs", keys); }
+  await kvPut("job:" + id, J);
+  S.view = startKind() ? "hub" : "kind"; render();
+  await pull(); render(); sync(false);
+}
+(async function boot() {
+  render();
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
+  try { await loadQuestions(); } catch (e) { app.innerHTML = hdr("HWX Site Visit") + `<div class="note">Could not load the questions. Open the link once with signal.</div>`; return; }
+  const job = params.get("job"), t = params.get("t");
+  if (job) await openJob(job, t); else { S.view = "jobs"; render(); }
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+})();
+</script>
+</body>
+</html>
