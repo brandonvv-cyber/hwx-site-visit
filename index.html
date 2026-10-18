@@ -53,7 +53,12 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   padding: 12px max(16px, env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); display: flex; gap: 12px; }
 .btn { flex: 1; min-height: 78px; font-size: 26px; font-weight: 700; border-radius: 14px; border: 3px solid var(--head); background: var(--head); color: var(--head-ink); font-family: var(--f-head); text-transform: uppercase; letter-spacing: .04em; }
 .btn.alt { background: var(--surface); color: var(--head); flex: .55; }
-.btn.photo { background: var(--surface); color: var(--head); width: 100%; margin-top: 16px; flex: none; }
+.phrow { display: flex; gap: 12px; margin-top: 16px; }
+.btn.photo { background: #e65100; color: #ffffff; border-color: #bf360c; flex: 1; min-height: 78px; font-size: 24px; display: flex; align-items: center; justify-content: center; gap: 10px; box-shadow: 0 4px 0 #bf360c; }
+.btn.photo.album { background: #1565c0; border-color: #0d47a1; box-shadow: 0 4px 0 #0d47a1; }
+.btn.photo svg { width: 34px; height: 34px; flex: none; fill: none; stroke: #ffffff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.btn.photo:active { transform: translateY(3px); box-shadow: 0 1px 0 #bf360c; }
+.other.short { min-height: 84px; }
 .btn[disabled] { background: var(--disabled-bg); color: var(--muted); border-color: var(--line); }
 .block { width: 100%; min-height: 128px; text-align: left; border: 4px solid var(--head); border-radius: 18px; background: var(--surface); padding: 16px 18px; display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
 .block .t { flex: 1; min-width: 0; }
@@ -88,7 +93,7 @@ input[type=file] { display: none; }
 <input type="file" id="lib" accept="image/*" multiple>
 <script>
 "use strict";
-const APP_VERSION = "1.0";
+const APP_VERSION = "1.2";
 const API = "https://script.google.com/macros/s/AKfycbwdahF6EsK6Xdo8Wy888LWhHfXSJZK7zliP-njXFUaqZr4txa3Q9MSPYqgxzC-8tLUMBg/exec";
 const OTHER = "Other (write it in the box below)";
 const EQ_REPAIR = ["Acrylic spa","Concrete spa","Pool equipment","Sauna or steam room","Water feature","Borehole or water treatment","Heat pump"];
@@ -132,7 +137,10 @@ const deviceId = (() => { let d = localStorage.getItem("hwx-device"); if (!d) { 
 function ansOf(code) { return J.ans[code]; }
 function val(code) { const a = ansOf(code); return a ? a.v : undefined; }
 function has(code) { const v = val(code); return Array.isArray(v) ? v.length > 0 : (v !== undefined && v !== null && String(v).trim() !== ""); }
-function flat(code) { const v = val(code); return (Array.isArray(v) ? v.join(" ") : (v || "")).toLowerCase(); }
+function flat(code) {
+  if (code === "START-02" && startKind() === "New installation quote") return "";
+  if (code === "START-03" && startKind() === "Repair quote") return "";
+  const v = val(code); return (Array.isArray(v) ? v.join(" ") : (v || "")).toLowerCase(); }
 let saveTimer;
 function setAns(code, v, extra) {
   const it = findItem(code) || {};
@@ -140,7 +148,7 @@ function setAns(code, v, extra) {
   J.ans[code] = Object.assign({ o: prev.o || "", tab: it.tab || prev.tab || "", q: it.q || prev.q || "" }, extra || {}, { v: v, ts: new Date().toISOString(), dirty: true });
   persist(); scheduleSync();
 }
-function setOther(code, text) { const a = J.ans[code] || { v: "", tab: "", q: "" }; a.o = text; a.ts = new Date().toISOString(); a.dirty = true; J.ans[code] = a; persist(); scheduleSync(); }
+function setOther(code, text) { const it = findItem(code) || {}; const a = J.ans[code] || { v: "", tab: it.tab || "", q: it.q || "" }; a.o = text; a.ts = new Date().toISOString(); a.dirty = true; J.ans[code] = a; persist(); scheduleSync(); }
 function persist() { clearTimeout(saveTimer); saveTimer = setTimeout(() => kvPut("job:" + J.id, J).catch(() => {}), 150); }
 function findItem(code) { if (!Q) return null; for (const k in Q.tabs) for (const it of Q.tabs[k].items) if (it.code === code) return Object.assign({ tab: k }, it); return null; }
 
@@ -156,8 +164,7 @@ function jobTabs() {
 }
 function visible(it) {
   if (!it.code) return false; if (!it.cond) return true;
-  const [c, kws] = it.cond.split("~"); const a = flat(c);
-  return kws.split("/").some(k => a.includes(k.toLowerCase()));
+  return it.cond.split(";").some(cl => { const [c, kws] = cl.split("~"); const a = flat(c); return kws.split("/").some(k => a.includes(k.toLowerCase())); });
 }
 function qList(tab) { return Q.tabs[tab].items.filter(visible); }
 function progress(tab) { const l = qList(tab); return { done: l.filter(i => has(i.code)).length, total: l.length }; }
@@ -260,7 +267,9 @@ async function shrink(file) {
 function loadImg(file) { return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(file); }); }
 function photoUi(code) {
   const mine = photos.filter(p => p.code === code);
-  return `<button class="btn photo" data-photo="${esc(code)}">Take photo${mine.length ? " (" + mine.length + ")" : ""}</button>` +
+  const camSvg = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8h4l2-3h6l2 3h4v11H3z"/><circle cx="12" cy="13" r="3.5"/></svg>';
+  const picSvg = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M4 18l5-5 4 4 3-3 4 4"/></svg>';
+  return `<div class="phrow"><button class="btn photo" data-photo="${esc(code)}">${camSvg}Take photo${mine.length ? " (" + mine.length + ")" : ""}</button><button class="btn photo album" data-album="${esc(code)}">${picSvg}From album</button></div>` +
     (mine.length ? `<div class="thumbs">${mine.slice(-6).map(p => `<img alt="photo ${p.n}" src="${URL.createObjectURL(p.blob)}">`).join("")}</div>` : "");
 }
 
@@ -331,8 +340,9 @@ function vQ() {
   if (it.kind === "pick") {
     const sel = it.multi ? (Array.isArray(a) ? a : []) : [a];
     body = `<div class="opts">${it.opts.map(o => `<button class="opt ${it.multi ? "" : "single"} ${sel.includes(o) ? "on" : ""}" data-opt="${esc(o)}"><span class="box"></span>${esc(o)}</button>`).join("")}</div>`;
-    if (sel.includes(OTHER)) body += `<textarea class="other" id="other" placeholder="Write what you saw">${esc((ansOf(it.code) || {}).o || "")}</textarea>`;
-  } else if (it.kind === "num") body = `<input class="write num" id="numin" inputmode="decimal" placeholder="Type a number" value="${esc(a || "")}">`;
+    const need = sel.some(x => /write it in the box|^other/i.test(x || ""));
+    body += `<textarea class="other ${need ? "" : "short"}" id="other" placeholder="${need ? "Write it here" : "Note (optional)"}">${esc((ansOf(it.code) || {}).o || "")}</textarea>`;
+  } else if (it.kind === "num") body = `<input class="write num" id="numin" inputmode="decimal" placeholder="Type a number" value="${esc(a || "")}"><textarea class="other short" id="other" placeholder="Note (optional)">${esc((ansOf(it.code) || {}).o || "")}</textarea>`;
   else body = `<textarea class="write" id="textin" placeholder="Type here (keep it short)">${esc(a || "")}</textarea>`;
   app.innerHTML = hdr(Q.tabs[tab].title, "hub", true) +
     `<div class="bar"><i style="width:${Math.round(p.done * 100 / p.total)}%"></i></div>
@@ -375,6 +385,7 @@ document.addEventListener("click", async e => {
   }
   if (d.tab) { S.tab = d.tab; const l = qList(S.tab); const f = l.find(i => !has(i.code)) || l[0]; S.cur = f ? f.code : ""; nav("q"); return; }
   if (d.photo) { photoFor = d.photo; document.getElementById("cam").click(); return; }
+  if (d.album) { photoFor = d.album; document.getElementById("lib").click(); return; }
   if (d.opt !== undefined) {
     const it = qList(S.tab).find(i => i.code === S.cur), o = d.opt;
     if (it.multi) { const arr = (Array.isArray(val(it.code)) ? val(it.code) : []).slice(); const i = arr.indexOf(o); if (i >= 0) arr.splice(i, 1); else arr.push(o); setAns(it.code, arr); const y = scrollY; render(); scrollTo(0, y); }
@@ -393,7 +404,7 @@ document.addEventListener("input", e => {
   if (t.id === "other") setOther(S.cur, t.value);
   else if (t.id === "textin" || t.id === "numin") setAns(S.cur, t.value);
 });
-document.getElementById("cam").addEventListener("change", e => { const f = Array.from(e.target.files); e.target.value = ""; if (f.length) addPhotoFiles(f); });
+for (const id of ["cam", "lib"]) document.getElementById(id).addEventListener("change", e => { const f = Array.from(e.target.files); e.target.value = ""; if (f.length) addPhotoFiles(f); });
 window.addEventListener("online", () => sync(false));
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") sync(false); });
 
@@ -419,7 +430,11 @@ async function openJob(id, token) {
   try { await loadQuestions(); } catch (e) { app.innerHTML = hdr("HWX Site Visit") + `<div class="note">Could not load the questions. Open the link once with signal.</div>`; return; }
   const job = params.get("job"), t = params.get("t");
   if (job) await openJob(job, t); else { S.view = "jobs"; render(); }
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+  if ("serviceWorker" in navigator) {
+    const had = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener("controllerchange", () => { if (had && !window.__reloaded) { window.__reloaded = true; location.reload(); } });
+    navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then(r => r.update()).catch(() => {});
+  }
 })();
 </script>
 </body>
