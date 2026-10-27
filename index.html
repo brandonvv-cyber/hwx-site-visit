@@ -98,7 +98,7 @@ input[type=file] { display: none; }
 <input type="file" id="lib" accept="image/*,video/*" multiple>
 <script>
 "use strict";
-const APP_VERSION = "1.8";
+const APP_VERSION = "1.9";
 const API = "https://script.google.com/macros/s/AKfycbwdahF6EsK6Xdo8Wy888LWhHfXSJZK7zliP-njXFUaqZr4txa3Q9MSPYqgxzC-8tLUMBg/exec";
 const OTHER = "Other (write it in the box below)";
 const EQ_REPAIR = ["Acrylic spa","Concrete spa","Pool equipment","Sauna or steam room","Water feature","Borehole or water treatment","Heat pump"];
@@ -112,11 +112,13 @@ const ROUTINE_TABS = ["16 Plant setup","17 Plant inspection"];
 const MAINT_TABS = ["18 Pool or spa profile","19 Maintenance visit"];
 function today() { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
 let SCOPE = new Map();   // code -> "r" (per visit date), "c" (per client) or "cv" (per client and visit date); other codes are plain
+let CTX = { tab: "", inst: 1 }, TABOF = new Map();   // CTX: which copy ("water feature 2") of a tab the screen is working on; TABOF: question code -> tab
 function K(code) {
-  const s = SCOPE.get(code); if (!s) return code;
-  if (s === "r") return code + "@" + S.visit;
-  const c = S.client || "NOCLIENT";
-  return s === "c" ? code + "@" + c : code + "@" + c + "@" + S.visit;
+  const s = SCOPE.get(code); let key;
+  if (!s) key = code;
+  else if (s === "r") key = code + "@" + S.visit;
+  else { const c = S.client || "NOCLIENT"; key = s === "c" ? code + "@" + c : code + "@" + c + "@" + S.visit; }
+  return (CTX.inst > 1 && TABOF.get(code) === CTX.tab) ? key + "#" + CTX.inst : key;   // 2nd, 3rd ... copy of a tab: code#2, code#3
 }
 let CLIENTS = [];        // maintenance clients (one per pool or spa) from the office list
 
@@ -139,6 +141,8 @@ const kvPut = (k, v) => tx("kv", "readwrite", s => s.put(v, k));
 const phAll = () => tx("photos", "readonly", s => s.getAll());
 const phAdd = o => tx("photos", "readwrite", s => s.add(o));
 const phPut = o => tx("photos", "readwrite", s => s.put(o));
+const kvDel = k => tx("kv", "readwrite", s => s.delete(k));
+let TECH = "";               // technician key (from the technician link): lists the jobs and makes walk-in jobs
 
 /* ---------- state ---------- */
 let Q = null;               // questions {version, tabs}
@@ -190,6 +194,10 @@ function visible(it) {
 }
 function qList(tab) { return Q.tabs[tab].items.filter(visible); }
 function progress(tab) { const l = qList(tab); return { done: l.filter(i => has(i.code)).length, total: l.length }; }
+/* More than one feature (two water features, two spas, two boreholes): a tab can be added again. Answers of copy 2 are saved as code#2. */
+const canMulti = t => !/^(1 Site|15 Time|16 |17 |18 |19 )/.test(t);
+function instCount(tab) { let n = (J.inst && J.inst[tab]) || 1; for (const k in J.ans) { const m = /#(\d+)$/.exec(k); if (m && TABOF.get(k.slice(0, m.index).split("@")[0]) === tab) n = Math.max(n, +m[1]); } return n; }
+function inCtx(tab, inst, fn) { const o = CTX; CTX = { tab, inst }; try { return fn(); } finally { CTX = o; } }
 function secOf(tab, code) { let s = ""; for (const it of Q.tabs[tab].items) { if (it.sec) s = it.sec; if (it.code === code) return s; } return s; }
 
 /* ---------- sync ---------- */
@@ -208,6 +216,7 @@ async function post(body, ms) {
   } finally { clearTimeout(to); }
 }
 async function sync(manual) {
+  if (J && J.pending && !syncing) await promote();
   if (syncing || !J || !J.token) return;
   syncing = true; lastErr = ""; refreshStatus();
   try {
@@ -265,7 +274,7 @@ async function pull() {
     d.answers.forEach(sa => {
       const mine = J.ans[sa.code];
       if (!mine || (!mine.dirty && new Date(sa.ts) > new Date(mine.ts))) {
-        const base = String(sa.code).split("@")[0];
+        const base = String(sa.code).split("@")[0].split("#")[0];
         const it = findItem(base) || {};
         const multi = it.multi || ["START-02", "START-03"].includes(base);
         J.ans[sa.code] = { v: multi ? String(sa.answer || "").split("; ").filter(Boolean) : sa.answer, o: sa.other || "", tab: it.tab || "", q: it.q || "", ts: sa.ts, dirty: false };
@@ -328,8 +337,10 @@ function nav(v, extra) { Object.assign(S, { view: v }, extra || {}); render(); w
 function setFoot(h) { foot.innerHTML = h; foot.hidden = !h; }
 function hdr(title, back, pill) { return `<div class="top">${back ? `<button class="back" data-act="${back}">&#9664; Back</button>` : ""}<h1>${esc(title)}</h1>${pill ? `<div id="pill" class="pill"></div>` : ""}</div>`; }
 function render() {
+  CTX = (S.view === "q") ? { tab: S.tab, inst: S.inst || 1 } : { tab: "", inst: 1 };
   if (S.view === "boot") { app.innerHTML = hdr("HWX Site Visit") + `<div class="q">Loading...</div>`; setFoot(""); return; }
   if (S.view === "jobs") return vJobs();
+  if (S.view === "newjob") return vNewJob();
   if (S.view === "kind") return vKind();
   if (S.view === "pick") return vPick();
   if (S.view === "hub") return vHub();
@@ -338,13 +349,68 @@ function render() {
   if (S.view === "gen") return vGen();
   refreshStatus();
 }
+async function jobRowsHtml(filter) {
+  const keys = ((await kvGet("jobs")) || []).slice().reverse(), f = (filter || "").toLowerCase(); let html = "", n = 0;
+  for (const id of keys) {
+    const j = await kvGet("job:" + id); if (!j) continue; n++;
+    if (f && !((j.address || "") + " " + (j.client || "") + " " + (j.folder_name || "")).toLowerCase().includes(f)) continue;
+    html += `<button class="block" data-open="${esc(id)}"><span class="t"><b>${esc(j.address || id)}</b><span>${esc(j.client || "")}${j.pending ? " &middot; not filed in Drive yet (needs signal)" : ""}</span></span><span class="go">&#9654;</span></button>`;
+  }
+  return { html: html || `<div class="note">No job matches.</div>`, n };
+}
 async function vJobs() {
   setFoot("");
-  const keys = (await kvGet("jobs")) || [];
-  let html = "";
-  for (const id of keys) { const j = await kvGet("job:" + id); if (j) html += `<button class="block" data-open="${esc(id)}"><span class="t"><b>${esc(j.address || id)}</b><span>${esc(j.client || "")}</span></span><span class="go">&#9654;</span></button>`; }
-  app.innerHTML = hdr("HWX Site Visit") + `<div class="q">${keys.length ? "Your jobs" : "Open the job link"}</div>
-    <div class="hint"><b>How it works</b>Tap the job link in the client's "00 A SITE VISIT" folder in Google Drive. The job opens here and stays on this phone, even with no signal.</div>${html}<div class="ver">Version ${APP_VERSION}</div>`;
+  const rows = await jobRowsHtml(S.jsearch), at = await kvGet("jobsat");
+  const when = at ? " Jobs saved on this phone: " + new Date(at).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) + "." : "";
+  app.innerHTML = hdr("HWX Site Visit") + `<div class="q">${rows.n ? "Your jobs" : (TECH ? "No jobs on this phone yet" : "Open the technician link")}</div>` +
+    (TECH ? `<div class="sync"><b>${esc((S.jobsMsg || "") + when)}</b><button class="btn" data-act="getjobs">Download all jobs (needs signal)</button></div>
+      <button class="block start" data-act="newjob"><span class="t"><b>New job (not on the list)</b><span>Type the client and address. Works with no signal.</span></span><span class="go">&#9654;</span></button>
+      <input class="write" id="jsearch" placeholder="Search by street or name" value="${esc(S.jsearch || "")}" style="min-height:0;height:56px;margin-bottom:12px">`
+    : `<div class="hint"><b>How it works</b>Open the technician link once, with signal, and add it to the home screen. Then every job is on this phone and works with no signal. A single job link from the client's "00 A SITE VISIT" folder also works.</div>`) +
+    `<div id="jlist">${rows.html}</div><div class="ver">Version ${APP_VERSION}</div>`;
+}
+function vNewJob() {
+  setFoot("");
+  app.innerHTML = hdr("New job", "jobsback") + `<div class="q">Who is the client and where is the house?</div>
+    <div class="hint"><b>What to look for</b>Type the client's name and the street address. The job is filed in the client's Drive folder when there is signal. If the house already has a folder, that folder is used, so there is no duplicate.</div>
+    <input class="write" id="nj_client" placeholder="Client name" style="min-height:0;height:64px">
+    <input class="write" id="nj_addr" placeholder="Street address and suburb" style="min-height:0;height:64px;margin-top:12px">
+    <button class="btn" data-act="makejob" style="margin-top:16px">Start the job</button>`;
+}
+async function loadMyJobs() {
+  if (!TECH) return "";
+  try {
+    const r = await fetch(API + "?action=myjobs&job=TECH-001&t=" + encodeURIComponent(TECH)); const d = await r.json();
+    if (!d.ok) return "The technician link is no longer valid. Ask the office for the new one.";
+    const keys = (await kvGet("jobs")) || [];
+    for (const j of d.jobs) {
+      let cur = await kvGet("job:" + j.id);
+      if (!cur) cur = { id: j.id, token: j.token, client: j.client, address: j.address, folder_name: j.folder_name, ans: {} };
+      else if (!J || J.id !== j.id) { cur.token = j.token; cur.client = j.client; cur.address = j.address; cur.folder_name = j.folder_name; }
+      if (!J || J.id !== j.id) await kvPut("job:" + j.id, cur);
+      if (!keys.includes(j.id)) keys.push(j.id);
+    }
+    await kvPut("jobs", keys); await kvPut("jobsat", new Date().toISOString());
+    return "ok";
+  } catch (e) { return "offline"; }
+}
+async function promote() {   // a job made on site with no signal: file it in Drive now and swap its temporary id for the real one
+  if (!TECH || !J || !J.pending) return;
+  syncing = true; refreshStatus();
+  try {
+    const c = new AbortController(), to = setTimeout(() => c.abort(), 60000); let r;
+    try { r = await (await fetch(API, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ job: "TECH-001", t: TECH, action: "newjob", client: J.pending.client, address: J.pending.address, device: deviceId }), signal: c.signal })).json(); } finally { clearTimeout(to); }
+    if (!r.ok) throw new Error(r.error || "server said no");
+    const old = J.id;
+    J.id = r.job_id; J.token = r.token; J.client = r.client; J.address = r.address; J.folder_name = r.folder_name;
+    J.filed = (r.existing ? "Filed in the existing folder: " : "New Drive folder made: ") + r.folder_name; delete J.pending;
+    for (const p of await phAll()) if (p.job === old) { p.job = J.id; await phPut(p); }
+    photos.forEach(p => { if (p.job === old) p.job = J.id; });
+    const keys = ((await kvGet("jobs")) || []).filter(k => k !== old); if (!keys.includes(J.id)) keys.push(J.id);
+    await kvPut("jobs", keys); await kvDel("job:" + old); await kvPut("job:" + J.id, J);
+    await pull();
+  } catch (e) { lastErr = (e && e.name === "AbortError") ? "Slow or no signal" : "No signal or server busy"; }
+  finally { syncing = false; refreshStatus(); }
 }
 function vKind() {
   setFoot("");
@@ -422,8 +488,13 @@ function vHub() {
   if (startKind() === MAINT) return S.client ? vChub() : vClients();
   const tabs = jobTabs(); let all = 0, dn = 0;
   const blocks = tabs.map(t => {
-    const p = progress(t); all += p.total; dn += p.done; const complete = p.total > 0 && p.done === p.total;
-    return `<button class="block ${complete ? "done" : ""} ${p.done === 0 && t === "1 Site" ? "start" : ""}" data-tab="${esc(t)}"><span class="t"><b>${esc(Q.tabs[t].title)}</b><span>${Q.tabs[t].rep ? "Visit " + esc(S.visit) + ": " : ""}${complete ? "Done" : p.done + " of " + p.total + " answered"}</span></span><span class="go">${complete ? "&#10003;" : "&#9654;"}</span></button>`;
+    const n = instCount(t); let h = "";
+    for (let i = 1; i <= n; i++) {
+      const p = inCtx(t, i, () => progress(t)); all += p.total; dn += p.done; const complete = p.total > 0 && p.done === p.total;
+      h += `<button class="block ${complete ? "done" : ""} ${p.done === 0 && t === "1 Site" ? "start" : ""}" data-tab="${esc(t)}" data-inst="${i}"><span class="t"><b>${esc(Q.tabs[t].title)}${n > 1 ? " " + i : ""}</b><span>${Q.tabs[t].rep ? "Visit " + esc(S.visit) + ": " : ""}${complete ? "Done" : p.done + " of " + p.total + " answered"}</span></span><span class="go">${complete ? "&#10003;" : "&#9654;"}</span></button>`;
+    }
+    if (canMulti(t) && !Q.tabs[t].rep) h += `<button class="small" style="margin:-4px 0 14px" data-addinst="${esc(t)}">+ Add another: ${esc(Q.tabs[t].title)}</button>`;
+    return h;
   }).join("");
   const gp = photos.filter(p => p.code === "GEN").length;
   app.innerHTML = hdr("Your jobs", "jobsback", true) +
@@ -457,7 +528,7 @@ function vQ() {
       `<textarea class="other short" id="other" placeholder="Note (optional)">${esc((ansOf(it.code) || {}).o || "")}</textarea>`;
   } else if (it.kind === "num") body = `<input class="write num" id="numin" inputmode="decimal" placeholder="Type a number" value="${esc(a || "")}"><textarea class="other short" id="other" placeholder="Note (optional)">${esc((ansOf(it.code) || {}).o || "")}</textarea>`;
   else body = `<textarea class="write" id="textin" placeholder="Type here (keep it short)">${esc(a || "")}</textarea>`;
-  app.innerHTML = hdr(Q.tabs[tab].title, "hub", true) +
+  app.innerHTML = hdr(Q.tabs[tab].title + (S.inst > 1 ? " " + S.inst : ""), "hub", true) +
     `<div class="bar"><i style="width:${Math.round(p.done * 100 / p.total)}%"></i></div>
      <div class="count">Question ${idx + 1} of ${list.length}${it.multi ? " &middot; pick all that apply" : ""}</div>
      ${secOf(tab, it.code) ? `<div class="sec">${esc(secOf(tab, it.code))}</div>` : ""}
@@ -471,10 +542,10 @@ function vGen() {
 }
 function vDone() {
   const missing = [], notSure = [];
-  jobTabs().forEach(t => qList(t).forEach(i => { if (!has(i.code)) missing.push({ t, i }); else if (/not sure/i.test(flat(i.code))) notSure.push({ t, i }); }));
+  jobTabs().forEach(t => { const n = instCount(t); for (let k = 1; k <= n; k++) inCtx(t, k, () => qList(t).forEach(i => { const tt = n > 1 ? t + " " + k : t; if (!has(i.code)) missing.push({ t: tt, tb: t, i }); else if (/not sure/i.test(flat(i.code))) notSure.push({ t: tt, tb: t, i }); })); });
   app.innerHTML = hdr("Before you leave", "hub", true) + `<div class="q">${missing.length ? missing.length + " questions not answered" : "Everything is answered"}</div>
     ${syncHtml()}
-    ${missing.length ? `<ul class="list">${missing.slice(0, 40).map(m => `<li><b>${esc(Q.tabs[m.t].title)}:</b> ${esc(m.i.q)}</li>`).join("")}${missing.length > 40 ? `<li>and ${missing.length - 40} more</li>` : ""}</ul>` : ""}
+    ${missing.length ? `<ul class="list">${missing.slice(0, 40).map(m => `<li><b>${esc(Q.tabs[m.tb].title)}${m.t !== m.tb ? m.t.slice(m.tb.length) : ""}:</b> ${esc(m.i.q)}</li>`).join("")}${missing.length > 40 ? `<li>and ${missing.length - 40} more</li>` : ""}</ul>` : ""}
     ${notSure.length ? `<div class="q" style="font-size:28px">Marked not sure: ${notSure.length}</div><ul class="list">${notSure.slice(0, 20).map(m => `<li>${esc(m.i.q)}</li>`).join("")}</ul>` : ""}
     <div class="note">Do not leave site until the box above says Everything is sent. Get a signal and tap Send now.</div>`;
   setFoot(`<button class="btn" data-act="hub">Back to jobs</button>`); refreshStatus();
@@ -498,7 +569,8 @@ document.addEventListener("click", async e => {
     if (i >= 0) arr.splice(i, 1); else arr.push(d.eq);
     setAns(code, arr, { tab: "START", q: S.pickStage === "repair" ? "What are we repairing" : "What are we quoting on" }); const y = scrollY; render(); scrollTo(0, y); return;
   }
-  if (d.tab) { S.tab = d.tab; const l = qList(S.tab); const f = l.find(i => !has(i.code)) || l[0]; S.cur = f ? f.code : ""; nav("q"); return; }
+  if (d.tab) { S.tab = d.tab; S.inst = +d.inst || 1; CTX = { tab: S.tab, inst: S.inst }; const l = qList(S.tab); const f = l.find(i => !has(i.code)) || l[0]; S.cur = f ? f.code : ""; nav("q"); return; }
+  if (d.addinst) { const t = d.addinst; J.inst = J.inst || {}; J.inst[t] = instCount(t) + 1; persist(); S.tab = t; S.inst = J.inst[t]; CTX = { tab: t, inst: S.inst }; const l = qList(t); S.cur = l[0] ? l[0].code : ""; nav("q"); return; }
   if (d.photo) { photoFor = d.photo; document.getElementById("cam").click(); return; }
   if (d.album) { photoFor = d.album; document.getElementById("lib").click(); return; }
   if (d.video) { photoFor = d.video; document.getElementById("vcam").click(); return; }
@@ -509,6 +581,16 @@ document.addEventListener("click", async e => {
     return;
   }
   const act = d.act; if (!act) return;
+  if (act === "getjobs") { S.jobsMsg = "Downloading..."; vJobs(); const r = await loadMyJobs(); S.jobsMsg = r === "ok" ? "Jobs downloaded." : (r === "offline" ? "No signal. Try again when you have signal." : r); vJobs(); return; }
+  if (act === "newjob") { nav("newjob"); return; }
+  if (act === "makejob") {
+    const cl = (document.getElementById("nj_client").value || "").trim(), ad = (document.getElementById("nj_addr").value || "").trim();
+    if (cl.length + ad.length < 4) { alert("Type the client name and the street address."); return; }
+    const id = "NEW-" + today().replace(/-/g, "") + "-" + Math.random().toString(36).slice(2, 6);
+    const j = { id, token: "", client: cl, address: ad || cl, folder_name: "", ans: {}, pending: { client: cl, address: ad } };
+    await kvPut("job:" + id, j); const keys = (await kvGet("jobs")) || []; keys.push(id); await kvPut("jobs", keys);
+    J = j; photos = []; S.view = "kind"; render(); sync(false); return;
+  }
   if (act === "clients") { S.client = ""; nav("hub"); }
   else if (act === "kind") nav("kind"); else if (act === "hub") nav("hub"); else if (act === "finish") nav("done"); else if (act === "gen") nav("gen");
   else if (act === "jobsback") { S.view = "jobs"; history.replaceState(null, "", location.pathname); render(); }
@@ -523,7 +605,8 @@ document.addEventListener("change", e => {
 });
 document.addEventListener("input", e => {
   const t = e.target;
-  if (t.id === "csearch") { const el = document.getElementById("clist"); if (el) el.innerHTML = clientRows(t.value); }
+  if (t.id === "jsearch") { S.jsearch = t.value; jobRowsHtml(t.value).then(r => { const el = document.getElementById("jlist"); if (el) el.innerHTML = r.html; }); }
+  else if (t.id === "csearch") { const el = document.getElementById("clist"); if (el) el.innerHTML = clientRows(t.value); }
   else if (t.id === "other") setOther(S.cur, t.value);
   else if (t.id === "textin" || t.id === "numin") setAns(S.cur, t.value);
 });
@@ -548,7 +631,7 @@ function applyExtra() {
   }
 }
 async function loadExtra() {
-  try { const r = await fetch(API + "?action=options&job=" + encodeURIComponent(J.id) + "&t=" + encodeURIComponent(J.token)); const d = await r.json(); if (d.ok) { EXTRA = d.options || {}; await kvPut("extraopts", EXTRA); } } catch (e) { /* offline: keep the saved list */ }
+  try { const r = await fetch(API + "?action=options&job=" + encodeURIComponent(J.token ? J.id : "TECH-001") + "&t=" + encodeURIComponent(J.token || TECH)); const d = await r.json(); if (d.ok) { EXTRA = d.options || {}; await kvPut("extraopts", EXTRA); } } catch (e) { /* offline: keep the saved list */ }
   applyExtra();
 }
 async function openJob(id, token) {
@@ -568,10 +651,12 @@ async function openJob(id, token) {
 (async function boot() {
   render();
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
-  try { await loadQuestions(); SCOPE = new Map(); for (const k in Q.tabs) { const sc = Q.tabs[k].rep ? "r" : (Q.tabs[k].scope === "client" ? "c" : (Q.tabs[k].scope === "clientvisit" ? "cv" : "")); if (sc) Q.tabs[k].items.forEach(i => { if (i.code) SCOPE.set(i.code, sc); }); } } catch (e) { app.innerHTML = hdr("HWX Site Visit") + `<div class="note">Could not load the questions. Open the link once with signal.</div>`; return; }
+  try { await loadQuestions(); SCOPE = new Map(); TABOF = new Map(); for (const k in Q.tabs) Q.tabs[k].items.forEach(i => { if (i.code) TABOF.set(i.code, k); }); for (const k in Q.tabs) { const sc = Q.tabs[k].rep ? "r" : (Q.tabs[k].scope === "client" ? "c" : (Q.tabs[k].scope === "clientvisit" ? "cv" : "")); if (sc) Q.tabs[k].items.forEach(i => { if (i.code) SCOPE.set(i.code, sc); }); } } catch (e) { app.innerHTML = hdr("HWX Site Visit") + `<div class="note">Could not load the questions. Open the link once with signal.</div>`; return; }
   try { EXTRA = (await kvGet("extraopts")) || {}; applyExtra(); } catch (e) {}
+  try { const tk = params.get("tech"); if (tk) { await kvPut("tech", tk); params.delete("tech"); history.replaceState(null, "", location.pathname + (params.toString() ? "?" + params.toString() : "")); } TECH = (await kvGet("tech")) || ""; } catch (e) {}
   const job = params.get("job"), t = params.get("t");
   if (job) await openJob(job, t); else { S.view = "jobs"; render(); }
+  if (TECH) loadMyJobs().then(r => { S.jobsMsg = r === "ok" ? "Jobs list is up to date." : (r === "offline" ? "No signal: showing the jobs saved on this phone." : r); if (S.view === "jobs") vJobs(); });
   if ("serviceWorker" in navigator) {
     const had = !!navigator.serviceWorker.controller;
     navigator.serviceWorker.addEventListener("controllerchange", () => { if (had && !window.__reloaded) { window.__reloaded = true; location.reload(); } });
