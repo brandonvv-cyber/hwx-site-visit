@@ -1,5 +1,5 @@
-const CACHE = 'hwx-visit-v9';
-const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'questions.json'];
+const CACHE = 'hwx-visit-v10';
+const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'questions.json', 'shop.html', 'shop.webmanifest', 'spec.js'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
@@ -17,8 +17,9 @@ self.addEventListener('fetch', e => {
     return;
   }
   if (req.mode === 'navigate') {                         // always open the saved app first, refresh it in the background
-    e.respondWith(caches.match('index.html').then(hit => {
-      const net = fetch(req).then(r => { const copy = r.clone(); caches.open(CACHE).then(c => c.put('index.html', copy)); return r; }).catch(() => null);
+    const page = url.pathname.endsWith('shop.html') ? 'shop.html' : 'index.html';   // shop counter page (EC-010) or the technician app
+    e.respondWith(caches.match(page).then(hit => {
+      const net = fetch(req).then(r => { const copy = r.clone(); caches.open(CACHE).then(c => c.put(page, copy)); return r; }).catch(() => null);
       return hit || net;
     }));
     return;
