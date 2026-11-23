@@ -60,6 +60,23 @@ td .s { color: var(--muted); font-size: 14px; display: block; } td .flag { color
 .prow .pd { flex: 1; min-width: 0; } .prow .pd b { display: block; font-size: 17px; } .prow .s { color: var(--muted); font-size: 14px; display: block; } .prow .flag { color: var(--warn); font-weight: 700; font-size: 14px; display: block; }
 .step { display: flex; align-items: center; gap: 8px; } .step button { width: 52px; height: 52px; font-size: 28px; font-weight: 700; border: 3px solid var(--head); border-radius: 12px; background: var(--surface); color: var(--head); } .step b { min-width: 28px; text-align: center; font-size: 22px; }
 button.rm { margin-left: 8px; background: none; border: 0; color: var(--warn); text-decoration: underline; font-size: 14px; padding: 4px; }
+.wzwrap { max-width: 1240px; }
+.wzgrid { display: grid; gap: 14px; }
+.wzgrid aside { order: -1; }
+@media (min-width: 900px) { .wzgrid { grid-template-columns: minmax(0, 1fr) 400px; gap: 24px; } .wzgrid aside { order: 0; position: sticky; top: 78px; align-self: start; max-height: calc(100vh - 170px); overflow: auto; } }
+.stp { border-top: 3px solid var(--line); padding: 14px 0 6px; }
+.stp h2 { font-family: var(--f-head); font-weight: 700; font-size: 24px; text-transform: uppercase; letter-spacing: .03em; color: var(--head); margin: 0 0 10px; display: flex; gap: 10px; align-items: baseline; }
+.stp h2 i { font-style: normal; font-size: 16px; color: var(--muted); } .stp h2 em { margin-left: auto; font-style: normal; font-family: var(--f-body); text-transform: none; letter-spacing: 0; font-size: 15px; font-weight: 600; color: var(--muted); text-align: right; }
+.stp .sub { font-weight: 700; font-size: 16px; color: var(--muted); margin: 14px 0 6px; }
+.tls { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.tl { text-align: left; min-height: 84px; padding: 10px 12px; border: 3px solid var(--line); border-radius: 12px; background: var(--surface); display: flex; flex-direction: column; gap: 2px; }
+.tl .tn { font-weight: 700; font-size: 19px; line-height: 1.15; } .tl .tb { font-size: 15px; color: var(--muted); line-height: 1.25; }
+.tl .swt { height: 26px; border-radius: 6px; border: 1px solid rgba(0,0,0,.15); margin-bottom: 4px; }
+.tl.on { border-color: var(--on); box-shadow: inset 0 0 0 2px var(--on); background: var(--hint-bg); }
+.wzcard { background: var(--surface); border: 2px solid var(--line); border-radius: 14px; padding: 12px; }
+.spc { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; margin-top: 10px; font-size: 16px; } .spc span { color: var(--muted); font-size: 14px; display: block; } .spc b { font-size: 17px; }
+.dims { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.rd { font-size: 16px; color: var(--muted); margin-top: 8px; } .rd b { color: var(--ink); }
 #print { display: none; }
 @media print {
   @page { margin: 0; }
@@ -80,9 +97,10 @@ button.rm { margin-left: 8px; background: none; border: 0; color: var(--warn); t
 <script src="quote.js"></script>
 <script src="catdata.js"></script>
 <script src="cat.js"></script>
+<script src="sauna.js"></script>
 <script>
 "use strict";
-const SHOP_VERSION = "1.2";
+const SHOP_VERSION = "1.3";
 const API = "https://script.google.com/macros/s/AKfycbwdahF6EsK6Xdo8Wy888LWhHfXSJZK7zliP-njXFUaqZr4txa3Q9MSPYqgxzC-8tLUMBg/exec";
 const STAFF = ["Janine", "Alett", "Patience", "Other"];
 const app = document.getElementById("app"), foot = document.getElementById("foot");
@@ -90,7 +108,7 @@ const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&am
 const money = n => "R " + (Math.round(n * 100) / 100).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const ls = { get(k) { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} } };
 let KEY = "", S = null;
-function fresh() { return { view: "client", staff: (S && S.staff) || "", client: { name: "", phone: "", address: "", email: "" }, job: null, basket: [], cat: "", q: "", spa: { model: "Atlantic", grade: "B", htc: "HTCB" }, sauna: { L: "", W: "", H: "", glass: "" }, steam: { L: "", W: "", H: "", glass: "" }, zres: null, zmsg: "", inp: { mode: "vol", volumeL: "", len: "", wid: "", depth: "", use: "domestic", turnover: 6, pos: "level", height: "", distance: "", bends: "3-5", weirs: 1, returns: "" }, res: null, pick: {}, qty: {}, stock: null, sageRef: "" }; }
+function fresh() { return { view: "client", staff: (S && S.staff) || "", client: { name: "", phone: "", address: "", email: "" }, job: null, basket: [], cat: "", q: "", spa: { model: "Atlantic", grade: "B", htc: "HTCB" }, sauna: { L: "", W: "", H: "", glass: "" }, sw: HWXSauna.newDesign(), steam: { L: "", W: "", H: "", glass: "" }, zres: null, zmsg: "", inp: { mode: "vol", volumeL: "", len: "", wid: "", depth: "", use: "domestic", turnover: 6, pos: "level", height: "", distance: "", bends: "3-5", weirs: 1, returns: "" }, res: null, pick: {}, qty: {}, stock: null, sageRef: "" }; }
 function save() { ls.set("hwx-shop-session", S); }
 function setFoot(h) { foot.innerHTML = h; foot.hidden = !h; }
 function hdr(t, back) { return `<div class="top">${back ? `<button class="back" data-go="${back}">&#9664; Back</button>` : ""}<h1>${esc(t)}</h1></div>`; }
@@ -109,7 +127,7 @@ function render() {
 // 1. Client details, 2. folder in Customer quotes / shop app
 function vClient() {
   const c = S.client;
-  app.innerHTML = hdr("Shop counter: new client") + `<div class="wrap">
+  app.innerHTML = hdr("Shop counter: new client", "home") +`<div class="wrap">
     <div class="q">Who is the client?</div>
     <div class="hint">Type the client's details. A folder is made for them under Customer quotes, costings and drawings / shop app. If the house already has a folder there (or a full client folder), that one is used, so there is no duplicate.</div>
     <label class="f">At the counter</label><div class="chips">${STAFF.map(n => `<button class="chip${S.staff === n ? " on" : ""}" data-staff="${n}">${n}</button>`).join("")}</div>
@@ -246,11 +264,68 @@ function searchHtml() {
   const q = (S.q || "").trim(); if (q.length < 2) return "";
   const res = HWXCat.search(q, 25); return res.length ? res.map(m => rowFor(m.code)).join("") : `<div class="hint">Nothing in the Sage list matches "${esc(q)}". Try a shorter word, or add a custom item below.</div>`;
 }
+// Custom sauna designer (same questions as the Sauna Designer of 24 Sep 2026): tap through the steps, the plan updates as you go
+const SWH = () => HWXSauna;
+function swClamp(d) { return Object.assign({}, d, { W: Math.max(900, +d.W || 0), D: Math.max(900, +d.D || 0), H: Math.max(1500, +d.H || 0) }); }
+function swTile(path, val, inner, sel) { return `<button class="tl${String(sel) === String(val) ? " on" : ""}" data-sw="${path}" data-v="${esc(val)}">${inner}</button>`; }
+function swChip(path, val, label, sel) { return `<button class="chip${String(sel) === String(val) ? " on" : ""}" data-sw="${path}" data-v="${esc(val)}">${esc(label)}</button>`; }
+function swTog(path, label, on) { return `<button class="chip${on ? " on" : ""}" data-swt="${path}">${esc(label)}</button>`; }
+function swStep(n, title, val, body) { return `<section class="stp"><h2><i>${String(n).padStart(2, "0")}</i>${esc(title)}<em>${esc(val || "")}</em></h2>${body}</section>`; }
+function swAside() {
+  const H = SWH(), d = swClamp(H.normalize(S.sw)), g = H.geom(d);
+  const rows = [["Inside", H.mm(g.Wi) + " x " + H.mm(g.Di) + " x " + H.mm(g.Hi) + " mm"], ["Room volume", H.r1(g.volume) + " m3"], ["Heater", g.heater.kw + " kW electric"], ["Seats", "about " + g.seats], ["Glass", H.r1(g.glass.area) + " m2 toughened"], ["Type", H.STY[d.style].name]];
+  return `<div class="wzcard">${H.planSvg(d, g)}<div class="spc">${rows.map(r => `<div><span>${esc(r[0])}</span><b>${esc(r[1])}</b></div>`).join("")}</div></div>`;
+}
+function swHtml() {
+  const H = SWH(), raw = H.normalize(S.sw), d = swClamp(raw), g = H.geom(d), n = (() => { let i = 0; return () => ++i; })();
+  const pt = (k, tiles) => `<div class="tls">${tiles}</div>`;
+  const nm = (it, extra) => `<span class="tn">${esc(it.name)}</span><span class="tb">${esc(it.blurb || it.note || "")}</span>`;
+  const swatch = (it, sel, path) => swTile(path, it.id, `<span class="swt" style="background:${it.color}"></span><span class="tn">${esc(it.name)}</span><span class="tb">${esc(it.note)}</span>`, sel);
+  const st = [];
+  st.push(swStep(n(), "Sauna type", H.STY[raw.style].name, pt("", H.STYLES.map(s => swTile("style", s.id, nm(s), raw.style)).join("")) +
+    (raw.style === "builtin" ? `<div class="sub">Which sides are existing building walls?</div><div class="chips">${swTog("existing.back", "Back wall", raw.existing.back)}${swTog("existing.left", "Left wall", raw.existing.left)}${swTog("existing.right", "Right wall", raw.existing.right)}</div><div class="hint" style="margin-top:8px">Existing walls still get a frame and lining, but no outside cladding.</div>` : "")));
+  st.push(swStep(n(), "Size", raw.W + " x " + raw.D + " x " + raw.H + " mm", pt("", H.PRESETS.map(p => swTile("preset", p.id, `<span class="tn">${esc(p.label)}</span><span class="tb">${p.W} x ${p.D}</span>`, raw.preset)).join("")) +
+    `<div class="sub">Outside size${raw.preset === "custom" ? " (custom)" : ""}, in mm</div><div class="dims">${[["W", "Width"], ["D", "Depth"], ["H", raw.style === "outdoor" ? "Height at front" : "Height"]].map(([k, t]) => `<div><label class="f" style="margin-top:0">${t}</label><input class="w" id="sw_${k}" inputmode="numeric" value="${esc(raw[k])}"></div>`).join("")}</div>
+    <div class="rd" id="swrd">Inside <b>${H.mm(g.Wi)} x ${H.mm(g.Di)} x ${H.mm(g.Hi)}</b> mm &middot; room <b>${H.r1(g.volume)} m3</b> &middot; seats about <b>${g.seats}</b></div>`));
+  st.push(swStep(n(), "Front + door", H.FRT[raw.front].name + ", door " + raw.door, pt("", H.FRONTS.map(f => swTile("front", f.id, nm(f), raw.front)).join("")) +
+    `<div class="sub">Door position, seen from outside</div><div class="chips">${swChip("door", "left", "Left", raw.door)}${swChip("door", "centre", "Centre", raw.door)}${swChip("door", "right", "Right", raw.door)}</div><div class="hint" style="margin-top:8px">The heater goes in the front corner away from the door.</div>`));
+  st.push(swStep(n(), "Benches", H.BEN[raw.bench].name + ", " + g.seats + " seats", pt("", H.BENCHES.map(b => swTile("bench", b.id, nm(b), raw.bench)).join("")) + (g.warnings.length ? `<div class="note" id="swwarn">${g.warnings.map(esc).join("<br>")}</div>` : "")));
+  st.push(swStep(n(), "Inside finish", H.LIN[raw.lining].name + " + " + H.BW[raw.benchWood].name,
+    `<div class="sub" style="margin-top:0">Wall + ceiling lining</div>${pt("", H.LININGS.map(w => swatch(w, raw.lining, "lining")).join(""))}<div class="sub">Bench + backrest slats</div>${pt("", H.BENCHWOODS.map(w => swatch(w, raw.benchWood, "benchWood")).join(""))}<div class="sub">Floor</div>${pt("", H.FLOORS_BY_STYLE[raw.style].map(f => swTile("floor", f, `<span class="tn">${esc(H.FLOORS[f].name)}</span><span class="tb">${esc(H.FLOORS[f].blurb)}</span>`, raw.floor)).join(""))}`));
+  st.push(swStep(n(), "Outside finish", g.cladOn ? H.CLAD[raw.cladding].name : "Existing walls", g.cladOn ? pt("", H.CLADDINGS.filter(x => !(raw.style === "outdoor" && x.indoor)).map(w => swatch(w, raw.cladding, "cladding")).join("")) + (raw.style === "outdoor" ? `<div class="hint" style="margin-top:8px">Roof: 0.5 mm IBR sheeting in charcoal, 300 mm overhang, 8 degree pitch falling to the front gutter.</div>` : "") : `<div class="hint">All sides are existing walls with a glass front, so there is no outside cladding.</div>`));
+  st.push(swStep(n(), "Heater + extras", g.heater.kw + " kW" + (raw.heater === "auto" ? " (auto)" : ""),
+    `<div class="rd" style="margin-top:0">Recommended <b>${g.heater.auto} kW</b> electric, digital controller &middot; sizing volume <b>${H.r1(g.effVol)} m3</b></div><div class="hint" style="margin-top:8px">Room ${H.r1(g.volume)} m3 plus ${H.r1(g.glass.area)} m2 of glass counted as extra volume, because heat is lost through glass (SAU-HTR-03, proposed rule).</div>
+    <div class="sub">Heater size</div><div class="chips">${swChip("heater", "auto", "Auto", raw.heater)}${H.HEATERS.map(x => swChip("heater", String(x.kw), x.kw + " kW", raw.heater)).join("")}</div>
+    <div class="sub">Lighting + accessories</div><div class="chips">${swTog("led", "LED strip under the bench", raw.led)}${swTog("bucket", "Bucket + ladle", raw.bucket)}${swTog("gauge", "Thermo-hygrometer", raw.gauge)}</div>
+    <div class="sub">Wall lamps</div><div class="chips">${[0, 1, 2, 3].map(i => swChip("lamps", i, i === 0 ? "None" : String(i), raw.lamps)).join("")}</div>`));
+  return `<div class="hint">Tap through the steps. The plan updates as you go. This is a design for the quote: the office prices it after the site visit, so no price is shown.</div>
+    <div class="wzgrid"><div class="wz">${st.join("")}<button class="btn" style="max-width:none;width:100%;margin:18px 0 4px" data-act="addsauna">Add this sauna to the quote</button><div id="zmsg">${S.zmsg ? `<div class="ok">${esc(S.zmsg)}</div>` : ""}</div></div><aside id="swaside">${swAside()}</aside></div>`;
+}
+function swSet(path, v) {
+  const d = S.sw;
+  if (path === "preset") { const p = SWH().PRESETS.find(x => x.id === v); if (p) { d.W = p.W; d.D = p.D; d.H = p.H; } }
+  else if (path === "lamps") d.lamps = +v; else d[path] = v;
+  SWH().normalize(d); S.zmsg = ""; save(); vCat();
+}
+function swToggle(path) { const d = S.sw; if (path.startsWith("existing.")) { const k = path.slice(9); d.existing[k] = !d.existing[k]; } else d[path] = !d[path]; SWH().normalize(d); S.zmsg = ""; save(); vCat(); }
+function swInput(k, v) {
+  S.sw[k] = Math.max(0, Math.round(+String(v).replace(",", ".") || 0)); SWH().normalize(S.sw); save();
+  const a = document.getElementById("swaside"); if (a) a.innerHTML = swAside();
+  const H = SWH(), g = H.geom(swClamp(S.sw)), r = document.getElementById("swrd"); if (r) r.innerHTML = `Inside <b>${H.mm(g.Wi)} x ${H.mm(g.Di)} x ${H.mm(g.Hi)}</b> mm &middot; room <b>${H.r1(g.volume)} m3</b> &middot; seats about <b>${g.seats}</b>`;
+}
+function addSauna() {
+  const H = SWH(), raw = H.normalize(S.sw), m = document.getElementById("zmsg");
+  if (raw.W < 1000 || raw.D < 900 || raw.H < 1900) { if (m) m.innerHTML = `<div class="note">The size is too small: at least 1000 wide, 900 deep and 1900 high.</div>`; return; }
+  const d = JSON.parse(JSON.stringify(raw)), g = H.geom(d), t = H.describe(d, g);
+  S.basket.push({ id: uid(), cat: "sauna", desc: t.desc, price: null, qty: 1, custom: true, note: t.note, internal: t.heaterNote, design: d });
+  S.zmsg = "Added the custom sauna to the quote. Change it and add again for a second sauna, or remove it on the list screen."; save(); vCat();
+}
 function vCat() {
   const c = HWXCat.CATS.find(x => x.key === S.cat) || HWXCat.CATS[6], sy = window.scrollY;
-  let h = hdr(c.title, "menu") + `<div class="wrap"><div class="ok">${esc(S.client.name)} &middot; ${esc(S.client.address)}</div>`;
+  let h = hdr(c.title, "menu") + `<div class="wrap${S.cat === "sauna" ? " wzwrap" : ""}"><div class="ok">${esc(S.client.name)} &middot; ${esc(S.client.address)}</div>`;
   if (S.cat === "spa") h += spaBlock();
-  if (S.cat === "sauna" || S.cat === "steam") h += sizeBlock(S.cat);
+  if (S.cat === "sauna") h += swHtml() + `<div class="sec" style="margin-top:34px">Ready-made saunas, heaters and parts (Sage)</div>`;
+  if (S.cat === "steam") h += sizeBlock(S.cat);
   if (S.cat === "reticulation") h += `<div class="hint">For a borehole or a full water treatment plant, book a site visit (the water must be tested first). Use this screen for off-the-shelf pumps, tanks and parts.</div>`;
   (HWXCat.QUICK[S.cat] || []).forEach(([t, codes]) => { h += `<div class="sec">${esc(t)}</div>` + codes.map(rowFor).join(""); });
   h += `<div class="sec">Search the whole Sage list</div><input class="w" id="srch" placeholder="Part of a name or a code, e.g. pump or SAO9" value="${esc(S.q || "")}" autocomplete="off"><div id="sres">${searchHtml()}</div>
@@ -269,7 +344,7 @@ function addCustom() {
 }
 function bLine(b) {
   const m = b.code ? HWXCat.get(b.code) : null;
-  return { code: b.code || "", desc: b.code ? (m ? m.desc : b.code) : b.desc, price: b.code ? (m ? m.price : null) : b.price, onhand: m ? m.qty : null, qty: b.qty, key: "b:" + b.id, bid: b.id, grp: b.cat, note: b.note || "" };
+  return { code: b.code || "", desc: b.code ? (m ? m.desc : b.code) : b.desc, price: b.code ? (m ? m.price : null) : b.price, onhand: m ? m.qty : null, qty: b.qty, key: "b:" + b.id, bid: b.id, grp: b.cat, note: b.note || "", internal: b.internal || "", design: b.design || null };
 }
 const optLines = () => S.basket.filter(b => b.opt).map(bLine);
 
@@ -310,7 +385,7 @@ function vList() {
   }
   const ls_ = lines(); let sub = 0;
   h += `<div class="sec">Full list for Sage</div>` + (ls_.length ? `<table><tr><th>Code</th><th>Description</th><th class="n">Qty</th><th class="n">Unit ex VAT</th><th class="n">Total ex VAT</th></tr>` : `<div class="hint">Nothing added yet. Tap "Add more" to pick a category.</div><table>`);
-  for (const l of ls_) { const t = l.price > 0 ? l.price * l.qty : 0; sub += t; const fl = flagOf(l); h += `<tr><td>${esc(l.code || "not in Sage")}</td><td>${esc(l.desc || l.note)}${l.note && l.desc ? `<span class="s">${esc(l.note)}</span>` : ""}${fl ? `<span class="flag">${esc(fl)}</span>` : ""}${l.bid ? `<button class="rm" data-rm="${esc(l.bid)}">remove</button>` : ""}</td><td class="n"><input data-qty="${esc(l.key)}" inputmode="numeric" value="${l.qty}"></td><td class="n">${l.price > 0 ? money(l.price) : "-"}</td><td class="n">${l.price > 0 ? money(t) : "-"}</td></tr>`; }
+  for (const l of ls_) { const t = l.price > 0 ? l.price * l.qty : 0; sub += t; const fl = flagOf(l); h += `<tr><td>${esc(l.code || "not in Sage")}</td><td>${esc(l.desc || l.note)}${l.note && l.desc ? `<span class="s">${esc(l.note)}</span>` : ""}${l.internal ? `<span class="s">${esc(l.internal)}</span>` : ""}${fl ?`<span class="flag">${esc(fl)}</span>` : ""}${l.bid ? `<button class="rm" data-rm="${esc(l.bid)}">remove</button>` : ""}</td><td class="n"><input data-qty="${esc(l.key)}" inputmode="numeric" value="${l.qty}"></td><td class="n">${l.price > 0 ? money(l.price) : "-"}</td><td class="n">${l.price > 0 ? money(t) : "-"}</td></tr>`; }
   h += `<tr class="tot"><td></td><td>Subtotal ex VAT</td><td></td><td></td><td class="n">${money(sub)}</td></tr><tr class="tot"><td></td><td>VAT 15%</td><td></td><td></td><td class="n">${money(sub * 0.15)}</td></tr><tr class="tot"><td></td><td>Total incl VAT</td><td></td><td></td><td class="n">${money(sub * 1.15)}</td></tr></table>`;
   const ol = optLines();
   if (ol.length) h += `<div class="sec">Optional extras (shown on the quote, not in the total)</div><table>${ol.map(l => `<tr><td>${esc(l.desc)}${l.code ? `<span class="s">${esc(l.code)}</span>` : ""}${l.note ? `<span class="s">${esc(l.note)}</span>` : ""}<button class="rm" data-rm="${esc(l.bid)}">remove</button></td><td class="n">${l.price > 0 ? money(l.price * l.qty) + " ex VAT" : "price on request"}</td></tr>`).join("")}</table>`;
@@ -348,7 +423,7 @@ function toCsv() {
   const h = handoff(), q = v => { const s = String(v == null ? "" : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
   const rows = [["Client", S.client.name], ["Phone", S.client.phone], ["Address", S.client.address], ["Email", S.client.email], ["Shop app reference", h.ref], ["Sage quote number", S.sageRef], ["Date", h.date], ["At the counter", S.staff], ["Stock", h.stock], [],
     ["Item code", "Description", "Quantity", "Unit price ex VAT", "Line total ex VAT", "Note"]];
-  for (const l of h.L) rows.push([l.code || "NOT IN SAGE", l.desc || l.note, l.qty, l.price > 0 ? l.price.toFixed(2) : "", l.price > 0 ? (l.price * l.qty).toFixed(2) : "", [l.code ? "" : l.note, flagOf(l)].filter(Boolean).join("; ")]);
+  for (const l of h.L) rows.push([l.code || "NOT IN SAGE", l.desc || l.note, l.qty, l.price > 0 ? l.price.toFixed(2) : "", l.price > 0 ? (l.price * l.qty).toFixed(2) : "", [l.code ? "" : l.note, l.internal, flagOf(l)].filter(Boolean).join("; ")]);
   rows.push([], ["", "Subtotal ex VAT", "", "", h.sub.toFixed(2)], ["", "VAT 15%", "", "", (h.sub * 0.15).toFixed(2)], ["", "Total incl VAT", "", "", (h.sub * 1.15).toFixed(2)]);
   const ol = optLines(); if (ol.length) { rows.push([], ["Optional extras shown on the client quote (not in the total)"]); for (const l of ol) rows.push([l.code || "NOT IN SAGE", l.desc, l.qty, l.price > 0 ? l.price.toFixed(2) : "", l.price > 0 ? (l.price * l.qty).toFixed(2) : "", l.note]); }
   return rows.map(r => r.map(q).join(",")).join("\r\n");
@@ -371,13 +446,15 @@ function quoteData() {
   const h = handoff(), i = S.inp, r = S.res, p = r ? chosen("pump") : null, f = r ? chosen("filter") : null; let total = 0, onRequest = 0;
   const money2 = l => ({ unit: Math.round(l.price * 1.15 * 100) / 100, total: Math.round(l.price * l.qty * 1.15 * 100) / 100 });
   const L = h.L.map(l => {
-    if (!(l.price > 0)) { onRequest++; const nm = { pump: "pump", filter: "filter", weir: "weir", return: "return", cover: "pump cover" }[l.grp]; return { grp: l.grp, desc: l.brand && nm ? l.brand + (l.kw ? " " + l.kw + " kW" : "") + " " + nm : (l.desc || l.note), qty: l.qty, price: null }; }
+    if (!(l.price > 0)) { onRequest++; const nm = { pump: "pump", filter: "filter", weir: "weir", return: "return", cover: "pump cover" }[l.grp]; return { grp: l.grp, desc: l.brand && nm ? l.brand + (l.kw ? " " + l.kw + " kW" : "") + " " + nm : (l.desc || l.note), qty: l.qty, price: null, note: l.design ? l.note : "" }; }
     const m = money2(l); total += m.total;
     return { grp: l.grp, desc: l.desc || l.note, qty: l.qty, price: l.price, unit: m.unit, total: m.total, note: l.code && flagOf(l) && S.stock && S.stock.ok ? "Availability is confirmed when you order" : "" };
   });
   const O = optLines().map(l => l.price > 0 ? Object.assign({ desc: l.desc, qty: l.qty, price: l.price, note: l.note }, money2(l)) : { desc: l.desc, qty: l.qty, price: null, note: l.note });
   const now = new Date(), until = new Date(now.getTime() + HWXQuote.VALID_DAYS * 864e5), ex = total / 1.15;
-  return { client: S.client, staff: S.staff, sageRef: S.sageRef, date: longDate(now), validUntil: longDate(until), ref: S.job ? S.job.job_id : "shop-" + now.toISOString().slice(2, 10).replace(/-/g, ""),
+  const sl = S.basket.find(b => b.design && !b.opt); let saunaSvg = "", saunaRows = null;
+  if (sl) { const H = SWH(), dd = swClamp(sl.design), gg = H.geom(dd); saunaSvg = H.planSvg(dd, gg, 1000); saunaRows = [["Type", H.STY[dd.style].name], ["Outside size", dd.W + " x " + dd.D + " x " + dd.H + " mm"], ["Inside", H.mm(gg.Wi) + " x " + H.mm(gg.Di) + " mm"], ["Heater", gg.heater.kw + " kW electric"], ["Seats", "about " + gg.seats]]; }
+  return { saunaSvg, saunaRows, client: S.client, staff: S.staff, sageRef: S.sageRef, date: longDate(now), validUntil: longDate(until), ref: S.job ? S.job.job_id : "shop-" + now.toISOString().slice(2, 10).replace(/-/g, ""),
     lines: L, optional: O, ex, vat: total - ex, total, onRequest,
     summary: r ? [["Pool volume", (r.volL / 1000).toLocaleString("en-ZA") + " kL"], ["Filtering", "every " + i.turnover + " h (" + r.q + " m3/h)"], ["Pump", p.brand + (p.kw ? " " + p.kw + " kW" : "")], ["Filter", f.brand], ["Weirs and returns", r.weirs + " weir" + (r.weirs > 1 ? "s" : "") + ", " + r.returns + " returns"], ["Pipe", r.dia + " mm"]] : null,
     plan: r ? { len: i.mode === "dim" ? +i.len : 0, wid: i.mode === "dim" ? +i.wid : 0, volL: r.volL, dist: +i.distance, weirs: r.weirs, returns: r.returns, bends: i.bends } : null };
@@ -425,7 +502,10 @@ async function saveFolder() {
 
 document.addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.go === "home") { location.href = "./"; return; }
   if (b.dataset.go) return nav(b.dataset.go);
+  if (b.dataset.sw) return swSet(b.dataset.sw, b.dataset.v);
+  if (b.dataset.swt) return swToggle(b.dataset.swt);
   if (b.dataset.staff) { S.staff = b.dataset.staff; save(); document.querySelectorAll("[data-staff]").forEach(x => x.classList.toggle("on", x === b)); return; }
   if (b.dataset.k) { readSpec(); S.inp[b.dataset.k] = b.dataset.v; save(); return vSpec(); }
   if (b.dataset.pick) { S.pick[b.dataset.pick] = +b.dataset.i; save(); return vList(); }
@@ -442,6 +522,7 @@ document.addEventListener("click", e => {
   else if (a === "addspa") addSpa();
   else if (a === "size") doSize();
   else if (a === "addsize") addSize();
+  else if (a === "addsauna") addSauna();
   else if (a === "addcustom") addCustom();
   else if (a === "mkclient") mkClient();
   else if (a === "calc") calc();
@@ -466,6 +547,7 @@ document.addEventListener("input", e => {
   const id = e.target.id;
   if (id === "sageRef") { S.sageRef = e.target.value; save(); }
   else if (id === "srch") { S.q = e.target.value; const el = document.getElementById("sres"); if (el) el.innerHTML = searchHtml(); }
+  else if (id && /^sw_[WDH]$/.test(id)) swInput(id.slice(3), e.target.value);
   else if (id && id.startsWith("z_") && S[S.cat]) { S[S.cat][id.slice(2)] = e.target.value; save(); }
 });
 

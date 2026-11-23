@@ -98,7 +98,7 @@ input[type=file] { display: none; }
 <input type="file" id="lib" accept="image/*,video/*" multiple>
 <script>
 "use strict";
-const APP_VERSION = "1.9";
+const APP_VERSION = "2.0";
 const API = "https://script.google.com/macros/s/AKfycbwdahF6EsK6Xdo8Wy888LWhHfXSJZK7zliP-njXFUaqZr4txa3Q9MSPYqgxzC-8tLUMBg/exec";
 const OTHER = "Other (write it in the box below)";
 const EQ_REPAIR = ["Acrylic spa","Concrete spa","Pool equipment","Sauna or steam room","Water feature","Borehole or water treatment","Heat pump"];
@@ -364,6 +364,7 @@ function hdr(title, back, pill) { return `<div class="top">${back ? `<button cla
 function render() {
   CTX = (S.view === "q") ? { tab: S.tab, inst: S.inst || 1 } : { tab: "", inst: 1 };
   if (S.view === "boot") { app.innerHTML = hdr("HWX Site Visit") + `<div class="q">Loading...</div>`; setFoot(""); return; }
+  if (S.view === "home") return vHome();
   if (S.view === "jobs") return vJobs();
   if (S.view === "newjob") return vNewJob();
   if (S.view === "kind") return vKind();
@@ -383,11 +384,20 @@ async function jobRowsHtml(filter) {
   }
   return { html: html || `<div class="note">No job matches.</div>`, n };
 }
+// One app, two ways to work: on site (technician) or in the shop (counter quotes). Same install, same link.
+function vHome() {
+  setFoot("");
+  let key = ""; try { key = JSON.parse(localStorage.getItem("hwx-shop-key") || "null") || ""; } catch (e) {}
+  app.innerHTML = hdr("Hydroworx") + `<div class="q">Where are you working?</div>
+    <button class="block start" data-act="homesite"><span class="t"><b>On site</b><span>Site visit: questions and photos, saved on the phone even with no signal</span></span><span class="go">&#9654;</span></button>
+    <button class="block" data-act="homeshop"><span class="t"><b>In the shop</b><span>${key ? "Counter: quote a walk-in client on pools, spas, saunas, steam rooms, water and features" : "Not set up on this device yet: open the shop link once"}</span></span><span class="go">&#9654;</span></button>
+    <div class="ver">Version ${APP_VERSION}</div>`;
+}
 async function vJobs() {
   setFoot("");
   const rows = await jobRowsHtml(S.jsearch), at = await kvGet("jobsat");
   const when = at ? " Jobs saved on this phone: " + new Date(at).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) + "." : "";
-  app.innerHTML = hdr("HWX Site Visit") + `<div class="q">${rows.n ? "Your jobs" : (TECH ? "No jobs on this phone yet" : "Open the technician link")}</div>` +
+  app.innerHTML = hdr("HWX Site Visit", "tohome") +`<div class="q">${rows.n ? "Your jobs" : (TECH ? "No jobs on this phone yet" : "Open the technician link")}</div>` +
     (TECH ? `<div class="sync"><b>${esc((S.jobsMsg || "") + when)}</b><button class="btn" data-act="getjobs">Download all jobs (needs signal)</button></div>
       <button class="block start" data-act="newjob"><span class="t"><b>New job (not on the list)</b><span>Type the client and address. Works with no signal.</span></span><span class="go">&#9654;</span></button>
       <input class="write" id="jsearch" placeholder="Search by street or name" value="${esc(S.jsearch || "")}" style="min-height:0;height:56px;margin-bottom:12px">`
@@ -607,6 +617,9 @@ document.addEventListener("click", async e => {
   }
   const act = d.act; if (!act) return;
   if (act === "getjobs") { S.jobsMsg = "Downloading..."; vJobs(); const r = await loadMyJobs(); S.jobsMsg = r === "ok" ? "Jobs downloaded." : (r === "offline" ? "No signal. Try again when you have signal." : r); vJobs(); return; }
+  if (act === "tohome") { S.view = "home"; history.replaceState(null, "", location.pathname); render(); return; }
+  if (act === "homesite") { nav("jobs"); return; }
+  if (act === "homeshop") { let k = ""; try { k = JSON.parse(localStorage.getItem("hwx-shop-key") || "null") || ""; } catch (e) {} if (k) location.href = "shop.html"; else alert("Open the shop link once on this computer (it ends in ?shop=...). After that this button opens the counter."); return; }
   if (act === "newjob") { nav("newjob"); return; }
   if (act === "makejob") {
     const cl = (document.getElementById("nj_client").value || "").trim(), ad = (document.getElementById("nj_addr").value || "").trim();
@@ -680,8 +693,10 @@ async function openJob(id, token) {
   try { EXTRA = (await kvGet("extraopts")) || {}; applyExtra(); } catch (e) {}
   try { await kvPut("swcfg", { api: API, device: deviceId }); } catch (e) {}   // the background sender (sw.js) reads this
   try { const tk = params.get("tech"); if (tk) { await kvPut("tech", tk); params.delete("tech"); history.replaceState(null, "", location.pathname + (params.toString() ? "?" + params.toString() : "")); } TECH = (await kvGet("tech")) || ""; } catch (e) {}
-  const job = params.get("job"), t = params.get("t");
-  if (job) await openJob(job, t); else { S.view = "jobs"; render(); }
+  const job = params.get("job"), t = params.get("t"), sk = params.get("shop");
+  if (sk) { try { localStorage.setItem("hwx-shop-key", JSON.stringify(sk)); } catch (e) {} params.delete("shop"); history.replaceState(null, "", location.pathname + (params.toString() ? "?" + params.toString() : "")); }
+  let hasShop = false; try { hasShop = !!JSON.parse(localStorage.getItem("hwx-shop-key") || "null"); } catch (e) {}
+  if (job) await openJob(job, t); else { S.view = hasShop ? "home" : "jobs"; render(); }   // technician phones (no shop key) go straight to their jobs, as before
   if (TECH) loadMyJobs().then(r => { S.jobsMsg = r === "ok" ? "Jobs list is up to date." : (r === "offline" ? "No signal: showing the jobs saved on this phone." : r); if (S.view === "jobs") vJobs(); });
   if ("serviceWorker" in navigator) {
     const had = !!navigator.serviceWorker.controller;

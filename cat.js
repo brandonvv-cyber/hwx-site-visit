@@ -16,7 +16,7 @@
   const CATS = [
     { key: "pool", title: "Pool equipment", sub: "Pump, filter, weirs, returns, pipe and control box worked out for you", icon: "pump" },
     { key: "spa", title: "Spa", sub: "Superior spas with the optional extras", icon: "spa" },
-    { key: "sauna", title: "Sauna", sub: "Stand-alone saunas, heaters and parts", icon: "sauna" },
+    { key: "sauna", title: "Sauna", sub: "Design a custom sauna step by step, or pick ready-made saunas, heaters and parts", icon: "sauna" },
     { key: "steam", title: "Steam room", sub: "Steam generator sized from the room", icon: "steam" },
     { key: "reticulation", title: "Water reticulation", sub: "Pumps, tanks and water treatment parts", icon: "tap" },
     { key: "feature", title: "Water features", sub: "Nozzles, pumps, lights, rain curtains", icon: "fountain" },

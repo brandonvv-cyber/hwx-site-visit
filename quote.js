@@ -75,9 +75,10 @@
     ctx.restore();
   }
 
+  function svgImg(svg) { return new Promise(res => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg); }); }
   /* ---------- the quote ---------- */
   async function build(d) {
-    const logo = await loadLogo(), pages = [];
+    const logo = await loadLogo(), pages = [], sImg = d.saunaSvg ? await svgImg(d.saunaSvg) : null;
     let cv, ctx, y;
     const newPage = first => {
       cv = document.createElement("canvas"); cv.width = W; cv.height = H; ctx = cv.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H); pages.push(cv);
@@ -109,6 +110,16 @@
       txt(ctx, "WHAT WE WORKED OUT", M, y + 30, { bold: true, size: 18, color: TEAL });
       const rows = d.summary || []; rows.forEach((r, i) => { txt(ctx, r[0], M, y + 76 + i * 42, { size: 22, color: MUTED }); txt(ctx, r[1], M + 240, y + 76 + i * 42, { size: 22, bold: true }); });
       y += ph + 30;
+    }
+    // custom sauna: rough plan picture beside the key facts
+    if (sImg) {
+      const iw = 460, ih =Math.round(iw * sImg.height / sImg.width), bh = Math.max(ih, 260) + 30;
+      if (y + bh > H - 150) newPage(false);
+      ctx.drawImage(sImg, W - M - iw, y, iw, ih); ctx.strokeStyle = LINE; ctx.lineWidth = 2; ctx.strokeRect(W - M - iw, y, iw, ih);
+      txt(ctx, "YOUR SAUNA, PLAN VIEW", M, y + 30, { bold: true, size: 18, color: TEAL });
+      (d.saunaRows || []).forEach((r, i) => { txt(ctx, r[0], M, y + 76 + i * 42, { size: 22, color: MUTED }); txt(ctx, r[1], M + 240, y + 76 + i * 42, { size: 22, bold: true }); });
+      txt(ctx, "Indicative plan, confirmed after the site visit", M, y + ih - 6, { size: 18, color: MUTED });
+      y += bh;
     }
     // equipment by group
     const rowFont = "23px " + FONT, cDesc = M + 100, wDesc = 520, cQty = 790, cUnit = 970, cTot = W - M;
