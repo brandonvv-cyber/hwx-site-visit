@@ -11,7 +11,8 @@
     "Not included unless stated: installation, excavation and trenching, delivery, and the electrical connection (done by a registered electrician with a certificate of compliance).",
   ];
   const CO = { name: "Hydroworx SA (Pty) Ltd", reg: "Reg 2019/529213/07 · VAT 483 029 1920", addr: "Unit 7, 1300 Umgeni Road, Springfield Park, Durban 4001", contact: "Tel 031 285 0263 · WhatsApp 081 535 9997 · enquiries@hydroworx.co.za" };
-  const GROUPS = [["pump", "Pump"], ["filter", "Filter"], ["weir", "Weirs (skimmers)"], ["return", "Returns"], ["cover", "Pump cover"], ["control", "Control box and electrical"], ["pipe", "Pipe and fittings"]];
+  const GROUPS = [["pump", "Pump"], ["filter", "Filter"], ["weir", "Weirs (skimmers)"], ["return", "Returns"], ["cover", "Pump cover"], ["control", "Control box and electrical"], ["pipe", "Pipe and fittings"], ["spa", "Spa"], ["sauna", "Sauna"], ["steam", "Steam room"], ["reticulation", "Water reticulation"], ["feature", "Water features"], ["other", "Other items"]];
+  const ICON = { pipe: "pipe", reticulation: "tap", feature: "fountain", other: "box" };
   const R = n => "R " + (Math.round(n * 100) / 100).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   let logoImg = null;
@@ -39,6 +40,12 @@
     else if (kind === "return") { ctx.fillStyle = "#bfe3ee"; ctx.fillRect(40, 58, 56, 32); ctx.beginPath(); ctx.moveTo(6, 30); ctx.lineTo(46, 30); ctx.lineTo(46, 52); ctx.stroke(); box(34, 24, 12, 12, 3); ctx.beginPath(); ctx.moveTo(52, 44); ctx.lineTo(72, 36); ctx.moveTo(52, 50); ctx.lineTo(80, 50); ctx.moveTo(52, 56); ctx.lineTo(72, 64); ctx.stroke(); }
     else if (kind === "cover") { ctx.fillStyle = "#c9ccc7"; ctx.beginPath(); ctx.moveTo(8, 80); ctx.lineTo(14, 52); ctx.lineTo(34, 36); ctx.lineTo(62, 34); ctx.lineTo(84, 50); ctx.lineTo(92, 80); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.moveTo(30, 60); ctx.lineTo(44, 54); ctx.moveTo(56, 62); ctx.lineTo(72, 60); ctx.moveTo(40, 72); ctx.lineTo(60, 72); ctx.stroke(); }
     else if (kind === "control") { box(20, 12, 60, 76, 8); box(30, 24, 40, 18, 3); ctx.beginPath(); ctx.arc(38, 62, 6, 0, 7); ctx.arc(62, 62, 6, 0, 7); ctx.stroke(); ctx.fillStyle = AQUA; ctx.beginPath(); ctx.moveTo(54, 26); ctx.lineTo(44, 36); ctx.lineTo(52, 36); ctx.lineTo(46, 42); ctx.stroke(); }
+    else if (kind === "spa") { box(6, 44, 88, 40, 12); ctx.fillStyle = "#bfe3ee"; ctx.fillRect(14, 50, 72, 12); ctx.beginPath(); ctx.arc(30, 30, 5, 0, 7); ctx.arc(48, 22, 4, 0, 7); ctx.arc(66, 32, 6, 0, 7); ctx.stroke(); ctx.beginPath(); ctx.moveTo(6, 84); ctx.lineTo(6, 92); ctx.moveTo(94, 84); ctx.lineTo(94, 92); ctx.stroke(); }
+    else if (kind === "sauna") { box(14, 34, 72, 54, 4); ctx.beginPath(); ctx.moveTo(8, 34); ctx.lineTo(50, 12); ctx.lineTo(92, 34); ctx.stroke(); box(60, 52, 18, 36, 3); ctx.beginPath(); ctx.moveTo(24, 50); ctx.lineTo(46, 50); ctx.moveTo(24, 62); ctx.lineTo(46, 62); ctx.moveTo(24, 74); ctx.lineTo(46, 74); ctx.stroke(); }
+    else if (kind === "steam") { box(14, 56, 72, 32, 6); for (const dx of [28, 50, 72]) { ctx.beginPath(); ctx.moveTo(dx, 50); ctx.bezierCurveTo(dx - 10, 40, dx + 10, 32, dx, 22); ctx.bezierCurveTo(dx - 8, 14, dx + 6, 10, dx, 4); ctx.stroke(); } }
+    else if (kind === "tap") { ctx.beginPath(); ctx.moveTo(10, 40); ctx.lineTo(60, 40); ctx.arcTo(78, 40, 78, 58, 16); ctx.lineTo(78, 62); ctx.stroke(); box(30, 22, 24, 12, 3); ctx.beginPath(); ctx.moveTo(42, 22); ctx.lineTo(42, 12); ctx.moveTo(30, 12); ctx.lineTo(54, 12); ctx.stroke(); ctx.fillStyle = "#bfe3ee"; ctx.beginPath(); ctx.moveTo(78, 70); ctx.quadraticCurveTo(66, 84, 78, 92); ctx.quadraticCurveTo(90, 84, 78, 70); ctx.fill(); ctx.stroke(); }
+    else if (kind === "fountain") { ctx.fillStyle = "#bfe3ee"; ctx.fillRect(8, 72, 84, 18); ctx.strokeRect(8, 72, 84, 18); box(44, 56, 12, 16, 3); ctx.beginPath(); ctx.moveTo(50, 56); ctx.quadraticCurveTo(50, 12, 20, 40); ctx.moveTo(50, 56); ctx.quadraticCurveTo(50, 12, 80, 40); ctx.moveTo(50, 56); ctx.lineTo(50, 18); ctx.stroke(); }
+    else if (kind === "box") { box(14, 30, 72, 56, 4); ctx.beginPath(); ctx.moveTo(14, 46); ctx.lineTo(86, 46); ctx.moveTo(50, 30); ctx.lineTo(50, 46); ctx.stroke(); }
     else { ctx.lineWidth = 9; ctx.strokeStyle = "#7fb7cb"; ctx.beginPath(); ctx.moveTo(6, 28); ctx.lineTo(60, 28); ctx.arcTo(78, 28, 78, 46, 16); ctx.lineTo(78, 72); ctx.stroke(); ctx.lineWidth = 4; ctx.strokeStyle = TEAL; ctx.strokeRect(54, 20, 8, 16); ctx.strokeRect(70, 62, 16, 8); }
     ctx.restore();
   }
@@ -110,7 +117,7 @@
     for (const [key, title] of GROUPS) {
       const g = d.lines.filter(l => l.grp === key); if (!g.length) continue;
       if (y + 150 > H - 150) { newPage(false); head(); }
-      icon(ctx, key === "pipe" ? "pipe" : key, M + 6, y + 6, 78); txt(ctx, title, cDesc, y + 40, { bold: true, size: 26, color: TEAL });
+      icon(ctx, ICON[key] || key, M + 6, y + 6, 78); txt(ctx, title, cDesc, y + 40, { bold: true, size: 26, color: TEAL });
       ctx.strokeStyle = LINE; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cDesc, y + 56); ctx.lineTo(W - M, y + 56); ctx.stroke(); y += 78;
       for (const l of g) {
         ctx.font = rowFont; const lines = wrap(ctx, l.desc, wDesc), noteL = l.note ? wrap(ctx, l.note, wDesc) : [], rh = Math.max(46, lines.length * 30 + noteL.length * 26 + 16);
@@ -131,6 +138,20 @@
     [["Subtotal excluding VAT", R(d.ex), false], ["VAT 15%", R(d.vat), false], ["TOTAL INCLUDING VAT", R(d.total), true]].forEach(r => { txt(ctx, r[0], tx0, y + 36, { size: r[2] ? 26 : 23, bold: r[2], color: r[2] ? TEAL : INK }); txt(ctx, r[1], cTot - 14, y + 36, { size: r[2] ? 32 : 23, bold: r[2], align: "right", color: r[2] ? TEAL : INK }); y += r[2] ? 54 : 40; });
     if (d.onRequest) { txt(ctx, d.onRequest + " item" + (d.onRequest > 1 ? "s are" : " is") + " marked \"price on request\" and not in the total. We will confirm the price.", W - M, y + 20, { size: 20, color: "#b3261e", align: "right" }); y += 36; }
     y += 30;
+    // optional extras: shown, not added to the total
+    if (d.optional && d.optional.length) {
+      if (y + 120 > H - 150) newPage(false);
+      txt(ctx, "OPTIONAL EXTRAS (not included in the total above)", M, y + 20, { bold: true, size: 18, color: TEAL }); y += 34;
+      for (const o of d.optional) {
+        ctx.font = rowFont; const ol = wrap(ctx, o.desc, 760), nl = o.note ? wrap(ctx, o.note, 760) : [], rh = Math.max(44, ol.length * 30 + nl.length * 26 + 14);
+        if (y + rh > H - 150) newPage(false);
+        ol.forEach((t, i) => txt(ctx, t, M + 10, y + 28 + i * 30, { size: 23 }));
+        nl.forEach((t, i) => txt(ctx, t, M + 10, y + 28 + ol.length * 30 + i * 26 - 2, { size: 19, color: MUTED }));
+        txt(ctx, o.price != null ? R(o.total) : "Price on request", cTot - 14, y + 28, { size: o.price != null ? 23 : 21, bold: o.price != null, align: "right", color: o.price != null ? INK : MUTED });
+        ctx.strokeStyle = LINE; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(M, y + rh - 4); ctx.lineTo(W - M, y + rh - 4); ctx.stroke(); y += rh;
+      }
+      y += 24;
+    }
     // terms
     ctx.font = "20px " + FONT; const tl = []; TERMS.forEach(t => wrap(ctx, "• " + t, W - M * 2).forEach((s, i) => tl.push(i ? "   " + s : s)));
     if (y + tl.length * 28 + 60 > H - 120) newPage(false);

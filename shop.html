@@ -52,6 +52,14 @@ td .s { color: var(--muted); font-size: 14px; display: block; } td .flag { color
 .btn[disabled] { background: var(--disabled-bg); color: var(--muted); border-color: var(--line); }
 .kv { display: grid; gap: 4px; background: var(--surface); border: 2px solid var(--line); border-radius: 12px; padding: 12px 14px; margin: 12px 0; font-size: 16px; }
 .ver { color: var(--muted); font-size: 14px; text-align: center; margin: 30px 0 10px; }
+.tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 12px 0; }
+.tile { text-align: left; min-height: 120px; padding: 14px; border: 3px solid var(--head); border-radius: 16px; background: var(--surface); display: flex; flex-direction: column; gap: 4px; position: relative; }
+.tile b { font-family: var(--f-head); font-size: 26px; text-transform: uppercase; color: var(--head); line-height: 1.05; } .tile span { color: var(--muted); font-size: 15px; }
+.tile i { position: absolute; top: 10px; right: 12px; background: var(--done); color: #fff; font-style: normal; font-weight: 700; font-size: 14px; border-radius: 10px; padding: 2px 8px; }
+.prow { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 3px solid var(--line); border-radius: 12px; padding: 8px 12px; margin-bottom: 8px; } .prow.on { border-color: var(--on); background: var(--hint-bg); }
+.prow .pd { flex: 1; min-width: 0; } .prow .pd b { display: block; font-size: 17px; } .prow .s { color: var(--muted); font-size: 14px; display: block; } .prow .flag { color: var(--warn); font-weight: 700; font-size: 14px; display: block; }
+.step { display: flex; align-items: center; gap: 8px; } .step button { width: 52px; height: 52px; font-size: 28px; font-weight: 700; border: 3px solid var(--head); border-radius: 12px; background: var(--surface); color: var(--head); } .step b { min-width: 28px; text-align: center; font-size: 22px; }
+button.rm { margin-left: 8px; background: none; border: 0; color: var(--warn); text-decoration: underline; font-size: 14px; padding: 4px; }
 #print { display: none; }
 @media print {
   @page { margin: 0; }
@@ -70,9 +78,11 @@ td .s { color: var(--muted); font-size: 14px; display: block; } td .flag { color
 <div id="print"></div>
 <script src="spec.js"></script>
 <script src="quote.js"></script>
+<script src="catdata.js"></script>
+<script src="cat.js"></script>
 <script>
 "use strict";
-const SHOP_VERSION = "1.1";
+const SHOP_VERSION = "1.2";
 const API = "https://script.google.com/macros/s/AKfycbwdahF6EsK6Xdo8Wy888LWhHfXSJZK7zliP-njXFUaqZr4txa3Q9MSPYqgxzC-8tLUMBg/exec";
 const STAFF = ["Janine", "Alett", "Patience", "Other"];
 const app = document.getElementById("app"), foot = document.getElementById("foot");
@@ -80,7 +90,7 @@ const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&am
 const money = n => "R " + (Math.round(n * 100) / 100).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const ls = { get(k) { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} } };
 let KEY = "", S = null;
-function fresh() { return { view: "client", staff: (S && S.staff) || "", client: { name: "", phone: "", address: "", email: "" }, job: null, inp: { mode: "vol", volumeL: "", len: "", wid: "", depth: "", use: "domestic", turnover: 6, pos: "level", height: "", distance: "", bends: "3-5", weirs: 1, returns: "" }, res: null, pick: {}, qty: {}, stock: null, sageRef: "" }; }
+function fresh() { return { view: "client", staff: (S && S.staff) || "", client: { name: "", phone: "", address: "", email: "" }, job: null, basket: [], cat: "", q: "", spa: { model: "Atlantic", grade: "B", htc: "HTCB" }, sauna: { L: "", W: "", H: "", glass: "" }, steam: { L: "", W: "", H: "", glass: "" }, zres: null, zmsg: "", inp: { mode: "vol", volumeL: "", len: "", wid: "", depth: "", use: "domestic", turnover: 6, pos: "level", height: "", distance: "", bends: "3-5", weirs: 1, returns: "" }, res: null, pick: {}, qty: {}, stock: null, sageRef: "" }; }
 function save() { ls.set("hwx-shop-session", S); }
 function setFoot(h) { foot.innerHTML = h; foot.hidden = !h; }
 function hdr(t, back) { return `<div class="top">${back ? `<button class="back" data-go="${back}">&#9664; Back</button>` : ""}<h1>${esc(t)}</h1></div>`; }
@@ -88,6 +98,8 @@ function nav(v) { S.view = v; save(); render(); window.scrollTo(0, 0); }
 
 function render() {
   if (!KEY) { app.innerHTML = hdr("HWX Shop Counter") + `<div class="wrap"><div class="q">Open the shop link</div><div class="hint">This page needs the shop counter link from Brandon or Joanne (it ends in ?shop=...). Open it once on the counter computer and bookmark it.</div></div>`; setFoot(""); return; }
+  if (S.view === "menu") return vMenu();
+  if (S.view === "cat") return vCat();
   if (S.view === "spec") return vSpec();
   if (S.view === "list") return vList();
   if (S.view === "quote") return vQuote();
@@ -107,26 +119,43 @@ function vClient() {
     <label class="f">Email (optional)</label><input class="w" id="c_email" value="${esc(c.email)}" inputmode="email" autocomplete="off">
     <div id="cmsg">${S.job ? `<div class="ok">${esc(S.job.existing ? "Existing folder used: " : "New folder made: ")}${esc(S.job.folder_name)} (ref ${esc(S.job.job_id)})</div>` : ""}</div>
     <div class="ver">Shop counter ${SHOP_VERSION}</div></div>`;
-  setFoot(`<button class="btn" data-act="mkclient">${S.job ? "Next: the pool" : "Make the folder and go on"}</button>`);
+  setFoot(`<button class="btn" data-act="mkclient">${S.job ? "Next: what they need" : "Make the folder and go on"}</button>`);
 }
 async function mkClient() {
   const g = id => document.getElementById(id).value.trim();
   S.client = { name: g("c_name"), phone: g("c_phone"), address: g("c_address"), email: g("c_email") }; save();
   const msg = document.getElementById("cmsg");
   if (!S.client.name || !S.client.address) { msg.innerHTML = `<div class="note">The client name and the address are needed.</div>`; return; }
-  if (S.job && S.job.address === S.client.address && S.job.client === S.client.name) return nav("spec");
-  msg.innerHTML = `<div class="hint">Making the folder...</div>`;
+  if (S.job && S.job.address === S.client.address && S.job.client === S.client.name) return nav("menu");
+  msg.innerHTML = `<div class="hint">Checking for an existing folder...</div>`;
   try {
-    const r = await (await fetch(API, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ job: "SHOP-001", t: KEY, action: "shopjob", client: S.client.name, phone: S.client.phone, address: S.client.address, email: S.client.email, staff: S.staff }) })).json();
-    if (!r.ok) throw new Error(r.error || "server said no");
-    S.job = r; save(); vClient(); setTimeout(() => nav("spec"), 900);
+    const r = await shopJob({});
+    if (r.ask) return askFolder(r.matches);
+    finishJob(r);
   } catch (e) { msg.innerHTML = `<div class="note">Could not make the folder (${esc(e.message)}). Check the internet and try again.</div>`; }
+}
+async function shopJob(extra) {
+  const r = await (await fetch(API, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(Object.assign({ job: "SHOP-001", t: KEY, action: "shopjob", client: S.client.name, phone: S.client.phone, address: S.client.address, email: S.client.email, staff: S.staff }, extra)) })).json();
+  if (!r.ok) throw new Error(r.error || "server said no");
+  return r;
+}
+function finishJob(r) { S.job = r; save(); vClient(); setTimeout(() => nav("menu"), 900); }
+// A folder already exists for this address: never silently reuse it or duplicate it. The staff member chooses.
+function askFolder(matches) {
+  S.matches = matches; const msg = document.getElementById("cmsg");
+  msg.innerHTML = `<div class="note">There is already a folder for this address. Do you want to keep this client's quote in it, or make a separate new folder?</div>` +
+    matches.map((m, i) => `<div class="kv"><div><b>${esc(m.name)}</b></div><div class="s">${esc(m.where)}</div><button class="btn" style="max-width:none" data-use="${i}">Use this folder</button></div>`).join("") +
+    `<button class="btn alt" style="max-width:none;width:100%" data-newfolder="1">No: make a separate new folder</button>`;
+}
+async function folderChoice(extra) {
+  const msg = document.getElementById("cmsg"); msg.innerHTML = `<div class="hint">Working...</div>`;
+  try { finishJob(await shopJob(extra)); } catch (e) { msg.innerHTML = `<div class="note">Could not do that (${esc(e.message)}). Check the internet and try again.</div>`; }
 }
 
 // 3. Counter spec screen
 function vSpec() {
   const i = S.inp, chip = (k, v, t) => `<button class="chip${String(i[k]) === String(v) ? " on" : ""}" data-k="${k}" data-v="${esc(v)}">${esc(t)}</button>`;
-  app.innerHTML = hdr("The pool", "client") + `<div class="wrap">
+  app.innerHTML = hdr("The pool", "menu") + `<div class="wrap">
     <div class="ok">${esc(S.client.name)} &middot; ${esc(S.client.address)}${S.job ? " &middot; ref " + esc(S.job.job_id) : ""}</div>
     <div class="sec">Water volume</div>
     <div class="chips">${chip("mode", "vol", "I know the litres")}${chip("mode", "dim", "Measure it (length x width x depth)")}</div>
@@ -155,18 +184,111 @@ function calc() {
   S.res = res; S.pick = { pump: 0, filter: 0, weir: 0, return: 0, cover: 3 }; S.qty = {}; S.stock = null; nav("list");
 }
 
+// 2b. What do they need? One basket for every category (pool, spa, sauna, steam room, water reticulation, water features, anything else)
+const uid = () => Math.random().toString(36).slice(2, 8);
+function vMenu() {
+  const n = c => S.basket.filter(b => b.cat === c).length + (c === "pool" && S.res ? 1 : 0);
+  app.innerHTML = hdr("What do they need?", "client") + `<div class="wrap"><div class="ok">${esc(S.client.name)} &middot; ${esc(S.client.address)}${S.job ? " &middot; ref " + esc(S.job.job_id) : ""}</div>
+    <div class="hint">Tap a category and add what the client wants. You can mix categories on one quote. When everything is added, tap "See the list and quote".</div>
+    <div class="tiles">${HWXCat.CATS.map(c => `<button class="tile" data-cat="${c.key}"><b>${esc(c.title)}</b><span>${esc(c.sub)}</span>${n(c.key) ? `<i>${n(c.key)} added</i>` : ""}</button>`).join("")}</div>
+    <div class="ver">Shop counter ${SHOP_VERSION} &middot; Sage prices as of ${esc(HWXCat.asof || "?")} until you tap Refresh stock</div></div>`;
+  setFoot(`<button class="btn" data-act="tolist"${S.res || S.basket.length ? "" : " disabled"}>See the list and quote</button>`);
+}
+function rowFor(code) {
+  const m = HWXCat.get(code); if (!m) return "";
+  const b = S.basket.find(x => x.code === code && x.cat === S.cat && !x.opt), q = b ? b.qty : 0;
+  return `<div class="prow${q ? " on" : ""}"><div class="pd"><b>${esc(m.desc)}</b><span class="s">${esc(m.code)} &middot; ${m.price > 0 ? money(m.price) + " ex VAT" : "no price in Sage: office prices it"} &middot; ${m.qty} on hand</span>${m.qty <= 0 ? `<span class="flag">None on hand in the last list: check before promising</span>` : ""}</div><div class="step"><button data-step="-1" data-code="${esc(code)}">&minus;</button><b>${q}</b><button data-step="1" data-code="${esc(code)}">+</button></div></div>`;
+}
+function addCode(code, d, cat) {
+  const i = S.basket.findIndex(x => x.code === code && x.cat === cat && !x.opt);
+  if (i < 0) { if (d > 0) S.basket.push({ id: uid(), cat, code, qty: d }); }
+  else { S.basket[i].qty += d; if (S.basket[i].qty <= 0) S.basket.splice(i, 1); }
+  save();
+}
+function spaBlock() {
+  const s = S.spa, code = HWXCat.SPA[s.model][s.grade], m = HWXCat.get(code), chip = (k, v, t) => `<button class="chip${s[k] === v ? " on" : ""}" data-spa="${k}" data-v="${esc(v)}">${esc(t)}</button>`;
+  return `<div class="sec">Superior spa</div><label class="f">Model</label><div class="chips">${Object.keys(HWXCat.SPA).map(x => chip("model", x, x)).join("")}</div>
+    <label class="f">Grade</label><div class="chips">${HWXCat.GRADES.map(g => chip("grade", g[0], g[1])).join("")}</div>
+    <label class="f">Hard top cover size (check it against the spa)</label><div class="chips">${HWXCat.HTC.map(c => chip("htc", c[0], c[1])).join("")}</div>
+    <div class="kv"><div><b>${esc(m ? m.desc : code)}</b></div><div class="s">${esc(code)} &middot; ${m && m.price > 0 ? money(m.price) + " ex VAT" : "no price in Sage"} &middot; ${m ? m.qty : 0} on hand (Superior builds to order)</div></div>
+    <div class="hint">Added to the quote as optional extras, not in the total: installation (easy R7,500, medium R10,500, difficult R15,500 ex VAT; the tier is decided after the site visit), the hard top cover${s.grade === "EL" ? " and the Elite Wi-Fi module" : ""}. Remove any you do not want on the list screen.</div>
+    <button class="btn" style="max-width:none;width:100%" data-act="addspa">Add this spa to the quote</button>
+    <div id="zmsg">${S.zmsg ? `<div class="ok">${esc(S.zmsg)}</div>` : ""}</div>`;
+}
+function addSpa() {
+  const s = S.spa, code = HWXCat.SPA[s.model][s.grade], has = f => S.basket.some(b => b.opt && f(b));
+  addCode(code, 1, "spa");
+  HWXCat.INSTALL.forEach(([d, p]) => { if (!has(b => b.desc === d)) S.basket.push({ id: uid(), cat: "spa", desc: d, price: p, qty: 1, opt: true, custom: true, note: "The tier (easy, medium or difficult) is confirmed after the site visit." }); });
+  if (s.htc && !has(b => b.code === s.htc)) S.basket.push({ id: uid(), cat: "spa", code: s.htc, qty: 1, opt: true });
+  if (s.grade === "EL" && !has(b => b.code === "ELBC01N")) S.basket.push({ id: uid(), cat: "spa", code: "ELBC01N", qty: 1, opt: true });
+  S.zmsg = "Added " + s.model + " " + HWXCat.GRADES.find(g => g[0] === s.grade)[1] + " with the optional extras."; save(); vCat();
+}
+function sizeBlock(kind) {
+  const z = S[kind], sauna = kind === "sauna", r = S.zres && S.zres.kind === kind ? S.zres : null, f = (k, t, ph) => `<div><label class="f">${t}</label><input class="w" id="z_${k}" inputmode="decimal" value="${esc(z[k])}" placeholder="${ph}"></div>`;
+  return `<div class="sec">${sauna ? "Size the heater" : "Size the steam generator"} (${sauna ? "SAU-HTR-03" : "STM-EQP-08"}, proposed rule)</div>
+    <div class="grid3">${f("L", "Length (m)", "")}${f("W", "Width (m)", "")}${f("H", sauna ? "Height (m)" : "Ceiling height (m)", "")}</div>
+    ${sauna ? `<label class="f">Glass, tile or masonry surface in the room (m2, 0 if none)</label><input class="w" id="z_glass" inputmode="decimal" value="${esc(z.glass)}" placeholder="0">`
+      : `<label class="f">Glass front, or cold tile, stone or masonry walls?</label><div class="chips"><button class="chip${z.cold === "yes" ? " on" : ""}" data-zc="yes">Yes: size up one step</button><button class="chip${z.cold !== "yes" ? " on" : ""}" data-zc="no">No</button></div>`}
+    <button class="btn" style="max-width:none;width:100%;margin-top:10px" data-act="size">${sauna ? "Work out the heater" : "Work out the generator"}</button>
+    <div id="zres">${r ? (r.error ? `<div class="note">${esc(r.error)}</div>` : `<div class="kv"><div><b>${sauna ? "Heater" : "Steam generator"}: ${esc(r.code ? (HWXCat.get(r.code) || {}).desc || r.code : r.kw + " kW")}</b></div><div class="s">Room ${r.net} m3, effective ${r.eff} m3${r.code ? " &middot; " + esc(r.code) : ""}</div>${r.note ? `<div class="s">${esc(r.note)}</div>` : ""}<button class="btn" style="max-width:none;margin-top:8px" data-act="addsize">Add it to the quote</button></div>`) : ""}</div>${S.zmsg ? `<div class="ok">${esc(S.zmsg)}</div>` : ""}`;
+}
+function doSize() {
+  const z = S[S.cat], g = k => +String(z[k] || "").replace(",", ".") || 0;
+  S.zres = Object.assign({ kind: S.cat }, S.cat === "sauna" ? HWXCat.sauna(g("L"), g("W"), g("H"), g("glass")) : HWXCat.steam(g("L"), g("W"), g("H"), z.cold === "yes")); S.zmsg = ""; save(); vCat();
+}
+function addSize() {
+  const r = S.zres; if (!r || r.error) return;
+  if (r.code) addCode(r.code, 1, S.cat);
+  else S.basket.push({ id: uid(), cat: S.cat, desc: "Steam generator " + r.kw + " kW (COASTS)", price: null, qty: 1, custom: true, note: "No Sage code: price from the supplier." });
+  S.zmsg = "Added to the quote."; save(); vCat();
+}
+function searchHtml() {
+  const q = (S.q || "").trim(); if (q.length < 2) return "";
+  const res = HWXCat.search(q, 25); return res.length ? res.map(m => rowFor(m.code)).join("") : `<div class="hint">Nothing in the Sage list matches "${esc(q)}". Try a shorter word, or add a custom item below.</div>`;
+}
+function vCat() {
+  const c = HWXCat.CATS.find(x => x.key === S.cat) || HWXCat.CATS[6], sy = window.scrollY;
+  let h = hdr(c.title, "menu") + `<div class="wrap"><div class="ok">${esc(S.client.name)} &middot; ${esc(S.client.address)}</div>`;
+  if (S.cat === "spa") h += spaBlock();
+  if (S.cat === "sauna" || S.cat === "steam") h += sizeBlock(S.cat);
+  if (S.cat === "reticulation") h += `<div class="hint">For a borehole or a full water treatment plant, book a site visit (the water must be tested first). Use this screen for off-the-shelf pumps, tanks and parts.</div>`;
+  (HWXCat.QUICK[S.cat] || []).forEach(([t, codes]) => { h += `<div class="sec">${esc(t)}</div>` + codes.map(rowFor).join(""); });
+  h += `<div class="sec">Search the whole Sage list</div><input class="w" id="srch" placeholder="Part of a name or a code, e.g. pump or SAO9" value="${esc(S.q || "")}" autocomplete="off"><div id="sres">${searchHtml()}</div>
+    <div class="sec">Something not in Sage</div><div class="kv"><input class="w" id="cu_name" placeholder="What is it?"><div class="grid3"><div><label class="f">Price ex VAT (blank = price on request)</label><input class="w" id="cu_price" inputmode="decimal"></div><div><label class="f">Quantity</label><input class="w" id="cu_qty" inputmode="numeric" value="1"></div><div><label class="f">&nbsp;</label><button class="btn" style="max-width:none;width:100%;min-height:58px" data-act="addcustom">Add it</button></div></div></div>
+    <div id="cmsg2"></div><div class="ver">Sage prices as of ${esc(HWXCat.asof || "?")}; Refresh stock on the list screen brings them up to date.</div></div>`;
+  app.innerHTML = h;
+  const n = S.basket.filter(b => b.cat === S.cat).length;
+  setFoot(`<button class="btn alt" data-go="menu">All categories</button><button class="btn" data-act="tolist">See the list and quote${n ? " (" + n + " here)" : ""}</button>`);
+  window.scrollTo(0, sy);
+}
+function addCustom() {
+  const g = id => (document.getElementById(id) || {}).value || "", name = g("cu_name").trim(), price = parseFloat(g("cu_price").replace(",", ".")), qty = Math.max(1, Math.round(+g("cu_qty") || 1)), m = document.getElementById("cmsg2");
+  if (!name) { m.innerHTML = `<div class="note">Type what the item is.</div>`; return; }
+  S.basket.push({ id: uid(), cat: S.cat, desc: name, price: price > 0 ? price : null, qty, custom: true, note: price > 0 ? "" : "Price from the supplier." }); save(); vCat();
+  const m2 = document.getElementById("cmsg2"); if (m2) m2.innerHTML = `<div class="ok">Added "${esc(name)}".</div>`;
+}
+function bLine(b) {
+  const m = b.code ? HWXCat.get(b.code) : null;
+  return { code: b.code || "", desc: b.code ? (m ? m.desc : b.code) : b.desc, price: b.code ? (m ? m.price : null) : b.price, onhand: m ? m.qty : null, qty: b.qty, key: "b:" + b.id, bid: b.id, grp: b.cat, note: b.note || "" };
+}
+const optLines = () => S.basket.filter(b => b.opt).map(bLine);
+
 // 4-7. Equipment list with options, pipe and fittings, stock refresh, Sage handoff
 function chosen(key) { const c = S.res.cat.find(x => x.key === key); return c ? c.opts[S.pick[key] || 0] : null; }
 function lines() {
   const out = [], add = (it, grp) => { if (!it) return; const k = grp + ":" + (it.code || it.note); const q = S.qty[k] != null ? +S.qty[k] : it.qty; if (q > 0) out.push(Object.assign({}, it, live(it), { qty: q, key: k, grp })); };
-  for (const c of S.res.cat) { const o = chosen(c.key); add(o, c.key); (o.extra || []).forEach(x => add(x, c.key)); }
-  const p = chosen("pump"); HWXSpec.control(p.kw).items.forEach(x => add(x, "control"));
-  S.res.fittings.forEach(x => add(x, "pipe"));
+  if (S.res) {
+    for (const c of S.res.cat) { const o = chosen(c.key); add(o, c.key); (o.extra || []).forEach(x => add(x, c.key)); }
+    const p = chosen("pump"); HWXSpec.control(p.kw).items.forEach(x => add(x, "control"));
+    S.res.fittings.forEach(x => add(x, "pipe"));
+  }
+  S.basket.filter(b => !b.opt).forEach(b => out.push(bLine(b)));
   return out;
 }
 function live(it) { const s = it.code ? HWXSpec.SNAP[it.code] : null; return s ? { desc: s[0], price: s[1], onhand: s[2] } : {}; }
 function flagOf(l) {
-  if (!l.code) return "No Sage code: price from the supplier";
+  if (!l.code) return l.price > 0 ? "" : "No Sage code: price from the supplier";
+  if (!(l.price > 0)) return "No price in Sage: the office prices it";
   if (!S.stock || !S.stock.ok) return "";
   if (!S.stock.codes[l.code]) return "Not in the Sage list";
   if (l.onhand <= 0) return "OUT OF STOCK";
@@ -174,25 +296,29 @@ function flagOf(l) {
   return "";
 }
 function vList() {
-  const r = S.res, p = chosen("pump"), ctl = HWXSpec.control(p.kw);
-  let h = hdr("Equipment list", "spec") + `<div class="wrap"><div class="ok">${esc(S.client.name)} &middot; ${esc(S.client.address)}${S.job ? " &middot; ref " + esc(S.job.job_id) : ""}</div>
-    <div class="kv"><div><b>${(r.volL / 1000).toLocaleString("en-ZA")} kL</b> &middot; flow ${r.q} m3/h &middot; head ${r.tdh} m &middot; pump ${r.kw}-${r.kwNext} kW &middot; pipe ${r.dia} mm</div>${r.notes.map(n => `<div class="s">${esc(n)}</div>`).join("")}</div>
-    ${r.flags.map(f => `<div class="note">${esc(f)}</div>`).join("")}
-    ${stockBanner()}`;
-  for (const c of r.cat) {
-    h += `<div class="sec">${esc(c.name)}</div>`;
-    c.opts.forEach((o, i) => { const L = Object.assign({}, o, live(o)), fl = o.code ? flagOf(Object.assign(L, { qty: o.qty })) : ""; h += `<button class="opt${(S.pick[c.key] || 0) === i ? " on" : ""}" data-pick="${c.key}" data-i="${i}"><b>${esc(o.brand)}${o.kw ? " " + o.kw + " kW" : ""}</b><span class="p">${o.code ? money(L.price * o.qty) : "price from supplier"}</span><span class="s">${esc(o.code || "no Sage code")} &middot; ${esc(L.desc || o.note)}${o.qty > 1 ? " &middot; " + o.qty + " x " + money(L.price) : ""}${L.onhand != null && S.stock && S.stock.ok ? " &middot; " + L.onhand + " on hand" : ""}</span>${o.code && o.note ? `<span class="s">${esc(o.note)}</span>` : ""}${fl ? `<span class="flag">${esc(fl)}</span>` : ""}</button>`; });
+  const r = S.res, p = r ? chosen("pump") : null, ctl = r ? HWXSpec.control(p.kw) : null;
+  let h = hdr("Equipment list", "menu") + `<div class="wrap"><div class="ok">${esc(S.client.name)} &middot; ${esc(S.client.address)}${S.job ? " &middot; ref " + esc(S.job.job_id) : ""}</div>`;
+  if (r) h += `<div class="kv"><div><b>${(r.volL / 1000).toLocaleString("en-ZA")} kL</b> &middot; flow ${r.q} m3/h &middot; head ${r.tdh} m &middot; pump ${r.kw}-${r.kwNext} kW &middot; pipe ${r.dia} mm</div>${r.notes.map(n => `<div class="s">${esc(n)}</div>`).join("")}</div>
+    ${r.flags.map(f => `<div class="note">${esc(f)}</div>`).join("")}`;
+  h += stockBanner();
+  if (r) {
+    for (const c of r.cat) {
+      h += `<div class="sec">${esc(c.name)}</div>`;
+      c.opts.forEach((o, i) => { const L = Object.assign({}, o, live(o)), fl = o.code ? flagOf(Object.assign(L, { qty: o.qty })) : ""; h += `<button class="opt${(S.pick[c.key] || 0) === i ? " on" : ""}" data-pick="${c.key}" data-i="${i}"><b>${esc(o.brand)}${o.kw ? " " + o.kw + " kW" : ""}</b><span class="p">${o.code ? money(L.price * o.qty) : "price from supplier"}</span><span class="s">${esc(o.code || "no Sage code")} &middot; ${esc(L.desc || o.note)}${o.qty > 1 ? " &middot; " + o.qty + " x " + money(L.price) : ""}${L.onhand != null && S.stock && S.stock.ok ? " &middot; " + L.onhand + " on hand" : ""}</span>${o.code && o.note ? `<span class="s">${esc(o.note)}</span>` : ""}${fl ? `<span class="flag">${esc(fl)}</span>` : ""}</button>`; });
+    }
+    h += `<div class="sec">Control box (from the pump current)</div><div class="hint">${esc(ctl.text)}</div>`;
   }
-  h += `<div class="sec">Control box (from the pump current)</div><div class="hint">${esc(ctl.text)}</div>`;
   const ls_ = lines(); let sub = 0;
-  h += `<div class="sec">Full list for Sage</div><table><tr><th>Code</th><th>Description</th><th class="n">Qty</th><th class="n">Unit ex VAT</th><th class="n">Total ex VAT</th></tr>`;
-  for (const l of ls_) { const t = (l.price || 0) * l.qty; sub += t; const fl = flagOf(l); h += `<tr><td>${esc(l.code || "-")}</td><td>${esc(l.desc || l.note)}${l.note && l.desc ? `<span class="s">${esc(l.note)}</span>` : ""}${fl ? `<span class="flag">${esc(fl)}</span>` : ""}</td><td class="n"><input data-qty="${esc(l.key)}" inputmode="numeric" value="${l.qty}"></td><td class="n">${l.code ? money(l.price) : "-"}</td><td class="n">${l.code ? money(t) : "-"}</td></tr>`; }
-  h += `<tr class="tot"><td></td><td>Subtotal ex VAT</td><td></td><td></td><td class="n">${money(sub)}</td></tr><tr class="tot"><td></td><td>VAT 15%</td><td></td><td></td><td class="n">${money(sub * 0.15)}</td></tr><tr class="tot"><td></td><td>Total incl VAT</td><td></td><td></td><td class="n">${money(sub * 1.15)}</td></tr></table>
-    <div class="hint" style="margin-top:12px">Guide prices from the Sage list. Sage checks the stock and makes the formal quote. Items marked "price from the supplier" are not in Sage yet.</div>
+  h += `<div class="sec">Full list for Sage</div>` + (ls_.length ? `<table><tr><th>Code</th><th>Description</th><th class="n">Qty</th><th class="n">Unit ex VAT</th><th class="n">Total ex VAT</th></tr>` : `<div class="hint">Nothing added yet. Tap "Add more" to pick a category.</div><table>`);
+  for (const l of ls_) { const t = l.price > 0 ? l.price * l.qty : 0; sub += t; const fl = flagOf(l); h += `<tr><td>${esc(l.code || "not in Sage")}</td><td>${esc(l.desc || l.note)}${l.note && l.desc ? `<span class="s">${esc(l.note)}</span>` : ""}${fl ? `<span class="flag">${esc(fl)}</span>` : ""}${l.bid ? `<button class="rm" data-rm="${esc(l.bid)}">remove</button>` : ""}</td><td class="n"><input data-qty="${esc(l.key)}" inputmode="numeric" value="${l.qty}"></td><td class="n">${l.price > 0 ? money(l.price) : "-"}</td><td class="n">${l.price > 0 ? money(t) : "-"}</td></tr>`; }
+  h += `<tr class="tot"><td></td><td>Subtotal ex VAT</td><td></td><td></td><td class="n">${money(sub)}</td></tr><tr class="tot"><td></td><td>VAT 15%</td><td></td><td></td><td class="n">${money(sub * 0.15)}</td></tr><tr class="tot"><td></td><td>Total incl VAT</td><td></td><td></td><td class="n">${money(sub * 1.15)}</td></tr></table>`;
+  const ol = optLines();
+  if (ol.length) h += `<div class="sec">Optional extras (shown on the quote, not in the total)</div><table>${ol.map(l => `<tr><td>${esc(l.desc)}${l.code ? `<span class="s">${esc(l.code)}</span>` : ""}${l.note ? `<span class="s">${esc(l.note)}</span>` : ""}<button class="rm" data-rm="${esc(l.bid)}">remove</button></td><td class="n">${l.price > 0 ? money(l.price * l.qty) + " ex VAT" : "price on request"}</td></tr>`).join("")}</table>`;
+  h += `<div class="hint" style="margin-top:12px">Guide prices from the Sage list. Sage checks the stock and makes the formal quote. Items "not in Sage" or with no price are priced by the office or the supplier.</div>
     <label class="f">Sage quote number (when Sage has made it)</label><input class="w" id="sageRef" value="${esc(S.sageRef)}">
-    <div id="hmsg"></div><div class="ver">Shop counter ${SHOP_VERSION} &middot; rules DR-001, DR-002 (draft)</div></div>`;
+    <div id="hmsg"></div><div class="ver">Shop counter ${SHOP_VERSION}${r ? " &middot; pool rules DR-001, DR-002 (draft)" : ""}</div></div>`;
   app.innerHTML = h;
-  setFoot(`<button class="btn" data-act="quote">Client quote</button><button class="btn alt" data-act="stock">Refresh stock</button><button class="btn alt" data-act="csv">Download CSV</button><button class="btn alt" data-act="print">Print staff list</button><button class="btn alt" data-act="savefolder">Save to client folder</button><button class="btn alt" data-act="newclient">New client</button>`);
+  setFoot(`<button class="btn" data-act="quote">Client quote</button><button class="btn alt" data-act="more">Add more</button><button class="btn alt" data-act="stock">Refresh stock</button><button class="btn alt" data-act="csv">Download CSV</button><button class="btn alt" data-act="print">Print staff list</button><button class="btn alt" data-act="savefolder">Save to client folder</button><button class="btn alt" data-act="newclient">New client</button>`);
 }
 function stockBanner() {
   if (!S.stock) return `<div class="hint">Stock not checked yet. Tap "Refresh stock" before the handoff to Sage.</div>`;
@@ -206,7 +332,7 @@ async function refreshStock() {
     const c = new AbortController(), to = setTimeout(() => c.abort(), 30000);
     const d = await (await fetch(API + "?action=stock&job=SHOP-001&t=" + encodeURIComponent(KEY), { signal: c.signal })).json(); clearTimeout(to);
     if (!d.ok || !d.items || !d.items.length) throw new Error(d.error || "the stock list is empty");
-    HWXSpec.setStock(d.items); const codes = {}; d.items.forEach(x => codes[x[0]] = 1);
+    HWXSpec.setStock(d.items); HWXCat.setStock(d.items); const codes = {}; d.items.forEach(x => codes[x[0]] = 1);
     const pd = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(d.asof || ""), when = pd ? new Date(+pd[3], +pd[2] - 1, +pd[1]) : null;
     S.stock = { ok: true, asof: d.asof || "unknown date", ageDays: when ? Math.floor((Date.now() - when) / 864e5) : 99, codes, at: new Date().toISOString() };
   } catch (e) { S.stock = { ok: false, err: e.name === "AbortError" ? "no answer from the stock list (check the internet)" : e.message }; }
@@ -222,15 +348,17 @@ function toCsv() {
   const h = handoff(), q = v => { const s = String(v == null ? "" : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
   const rows = [["Client", S.client.name], ["Phone", S.client.phone], ["Address", S.client.address], ["Email", S.client.email], ["Shop app reference", h.ref], ["Sage quote number", S.sageRef], ["Date", h.date], ["At the counter", S.staff], ["Stock", h.stock], [],
     ["Item code", "Description", "Quantity", "Unit price ex VAT", "Line total ex VAT", "Note"]];
-  for (const l of h.L) rows.push([l.code || "NO SAGE CODE", l.desc || l.note, l.qty, l.code ? (l.price || 0).toFixed(2) : "", l.code ? ((l.price || 0) * l.qty).toFixed(2) : "", [l.code ? "" : l.note, flagOf(l)].filter(Boolean).join("; ")]);
+  for (const l of h.L) rows.push([l.code || "NOT IN SAGE", l.desc || l.note, l.qty, l.price > 0 ? l.price.toFixed(2) : "", l.price > 0 ? (l.price * l.qty).toFixed(2) : "", [l.code ? "" : l.note, flagOf(l)].filter(Boolean).join("; ")]);
   rows.push([], ["", "Subtotal ex VAT", "", "", h.sub.toFixed(2)], ["", "VAT 15%", "", "", (h.sub * 0.15).toFixed(2)], ["", "Total incl VAT", "", "", (h.sub * 1.15).toFixed(2)]);
+  const ol = optLines(); if (ol.length) { rows.push([], ["Optional extras shown on the client quote (not in the total)"]); for (const l of ol) rows.push([l.code || "NOT IN SAGE", l.desc, l.qty, l.price > 0 ? l.price.toFixed(2) : "", l.price > 0 ? (l.price * l.qty).toFixed(2) : "", l.note]); }
   return rows.map(r => r.map(q).join(",")).join("\r\n");
 }
 function toHtml() {
   const h = handoff();
-  return `<h2>Hydroworx: equipment list for Sage</h2><p>${esc(S.client.name)} &middot; ${esc(S.client.phone)} &middot; ${esc(S.client.address)}<br>Shop app ref <b>${esc(h.ref)}</b> &middot; Sage quote no. <b>${esc(S.sageRef || "...........")}</b> &middot; ${esc(h.date)} &middot; ${esc(S.staff)}<br>${esc(h.stock)}<br>Pool ${(S.res.volL / 1000)} kL, flow ${S.res.q} m3/h, head ${S.res.tdh} m, pipe ${S.res.dia} mm (DR-001, DR-002 draft)</p>
-    <table style="width:100%;border-collapse:collapse"><tr><th align="left">Code</th><th align="left">Description</th><th align="right">Qty</th><th align="right">Unit ex VAT</th><th align="right">Total ex VAT</th></tr>${h.L.map(l => `<tr><td>${esc(l.code || "NO SAGE CODE")}</td><td>${esc(l.desc || l.note)}${flagOf(l) ? " <b>(" + esc(flagOf(l)) + ")</b>" : ""}</td><td align="right">${l.qty}</td><td align="right">${l.code ? money(l.price) : "supplier"}</td><td align="right">${l.code ? money(l.price * l.qty) : ""}</td></tr>`).join("")}
+  return `<h2>Hydroworx: equipment list for Sage</h2><p>${esc(S.client.name)} &middot; ${esc(S.client.phone)} &middot; ${esc(S.client.address)}<br>Shop app ref <b>${esc(h.ref)}</b> &middot; Sage quote no. <b>${esc(S.sageRef || "...........")}</b> &middot; ${esc(h.date)} &middot; ${esc(S.staff)}<br>${esc(h.stock)}${S.res ? `<br>Pool ${(S.res.volL / 1000)} kL, flow ${S.res.q} m3/h, head ${S.res.tdh} m, pipe ${S.res.dia} mm (DR-001, DR-002 draft)` : ""}</p>
+    <table style="width:100%;border-collapse:collapse"><tr><th align="left">Code</th><th align="left">Description</th><th align="right">Qty</th><th align="right">Unit ex VAT</th><th align="right">Total ex VAT</th></tr>${h.L.map(l => `<tr><td>${esc(l.code || "NO SAGE CODE")}</td><td>${esc(l.desc || l.note)}${flagOf(l) ? " <b>(" + esc(flagOf(l)) + ")</b>" : ""}</td><td align="right">${l.qty}</td><td align="right">${l.price > 0 ? money(l.price) : "supplier"}</td><td align="right">${l.price > 0 ? money(l.price * l.qty) : ""}</td></tr>`).join("")}
     <tr><td></td><td><b>Subtotal ex VAT</b></td><td></td><td></td><td align="right"><b>${money(h.sub)}</b></td></tr><tr><td></td><td>VAT 15%</td><td></td><td></td><td align="right">${money(h.sub * 0.15)}</td></tr><tr><td></td><td><b>Total incl VAT</b></td><td></td><td></td><td align="right"><b>${money(h.sub * 1.15)}</b></td></tr></table>
+    ${optLines().length ? `<p><b>Optional extras shown on the client quote (not in the total):</b><br>${optLines().map(l => esc(l.desc) + (l.code ? " (" + esc(l.code) + ")" : "") + (l.price > 0 ? " " + money(l.price * l.qty) + " ex VAT" : " price on request")).join("<br>")}</p>` : ""}
     <p>Guide prices from the Sage list. Sage checks the stock and makes the formal written quote.</p>`;
 }
 function downloadBlob(b, name) { const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }
@@ -240,19 +368,20 @@ function download() { downloadBlob(new Blob([toCsv()], { type: "text/csv" }), (S
 let QP = null;
 const longDate = d => d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
 function quoteData() {
-  const h = handoff(), i = S.inp, r = S.res, p = chosen("pump"), f = chosen("filter"); let total = 0, onRequest = 0;
+  const h = handoff(), i = S.inp, r = S.res, p = r ? chosen("pump") : null, f = r ? chosen("filter") : null; let total = 0, onRequest = 0;
+  const money2 = l => ({ unit: Math.round(l.price * 1.15 * 100) / 100, total: Math.round(l.price * l.qty * 1.15 * 100) / 100 });
   const L = h.L.map(l => {
-    if (!l.code || !(l.price > 0)) { onRequest++; const nm = { pump: "pump", filter: "filter", weir: "weir", return: "return", cover: "pump cover" }[l.grp]; return { grp: l.grp, desc: l.brand && nm ? l.brand + (l.kw ? " " + l.kw + " kW" : "") + " " + nm : (l.desc || l.note), qty: l.qty, price: null }; }
-    const unit = Math.round(l.price * 1.15 * 100) / 100, tot = Math.round(l.price * l.qty * 1.15 * 100) / 100; total += tot;
-    return { grp: l.grp, desc: l.desc || l.note, qty: l.qty, price: l.price, unit, total: tot, note: flagOf(l) && S.stock && S.stock.ok ? "Availability is confirmed when you order" : "" };
+    if (!(l.price > 0)) { onRequest++; const nm = { pump: "pump", filter: "filter", weir: "weir", return: "return", cover: "pump cover" }[l.grp]; return { grp: l.grp, desc: l.brand && nm ? l.brand + (l.kw ? " " + l.kw + " kW" : "") + " " + nm : (l.desc || l.note), qty: l.qty, price: null }; }
+    const m = money2(l); total += m.total;
+    return { grp: l.grp, desc: l.desc || l.note, qty: l.qty, price: l.price, unit: m.unit, total: m.total, note: l.code && flagOf(l) && S.stock && S.stock.ok ? "Availability is confirmed when you order" : "" };
   });
+  const O = optLines().map(l => l.price > 0 ? Object.assign({ desc: l.desc, qty: l.qty, price: l.price, note: l.note }, money2(l)) : { desc: l.desc, qty: l.qty, price: null, note: l.note });
   const now = new Date(), until = new Date(now.getTime() + HWXQuote.VALID_DAYS * 864e5), ex = total / 1.15;
   return { client: S.client, staff: S.staff, sageRef: S.sageRef, date: longDate(now), validUntil: longDate(until), ref: S.job ? S.job.job_id : "shop-" + now.toISOString().slice(2, 10).replace(/-/g, ""),
-    lines: L, ex, vat: total - ex, total, onRequest,
-    summary: [["Pool volume", (r.volL / 1000).toLocaleString("en-ZA") + " kL"], ["Filtering", "every " + i.turnover + " h (" + r.q + " m3/h)"], ["Pump", p.brand + (p.kw ? " " + p.kw + " kW" : "")], ["Filter", f.brand], ["Weirs and returns", r.weirs + " weir" + (r.weirs > 1 ? "s" : "") + ", " + r.returns + " returns"], ["Pipe", r.dia + " mm"]],
-    plan: { len: i.mode === "dim" ? +i.len : 0, wid: i.mode === "dim" ? +i.wid : 0, volL: r.volL, dist: +i.distance, weirs: r.weirs, returns: r.returns, bends: i.bends } };
-}
-async function vQuote() {
+    lines: L, optional: O, ex, vat: total - ex, total, onRequest,
+    summary: r ? [["Pool volume", (r.volL / 1000).toLocaleString("en-ZA") + " kL"], ["Filtering", "every " + i.turnover + " h (" + r.q + " m3/h)"], ["Pump", p.brand + (p.kw ? " " + p.kw + " kW" : "")], ["Filter", f.brand], ["Weirs and returns", r.weirs + " weir" + (r.weirs > 1 ? "s" : "") + ", " + r.returns + " returns"], ["Pipe", r.dia + " mm"]] : null,
+    plan: r ? { len: i.mode === "dim" ? +i.len : 0, wid: i.mode === "dim" ? +i.wid : 0, volL: r.volL, dist: +i.distance, weirs: r.weirs, returns: r.returns, bends: i.bends } : null };
+}async function vQuote() {
   app.innerHTML = hdr("Client quote", "list") + `<div class="wrap"><div id="qmsg"><div class="hint">Making the quote...</div></div><div id="qpages"></div><div class="ver">Shop counter ${SHOP_VERSION}</div></div>`;
   setFoot(`<button class="btn" data-act="qshare">Send to client</button><button class="btn alt" data-act="qpdf">Download PDF</button><button class="btn alt" data-act="qprint">Print</button><button class="btn alt" data-act="qsave">Save PDF to folder</button>`);
   const d = quoteData(), pages = await HWXQuote.build(d); QP = { d, pages };
@@ -300,8 +429,21 @@ document.addEventListener("click", e => {
   if (b.dataset.staff) { S.staff = b.dataset.staff; save(); document.querySelectorAll("[data-staff]").forEach(x => x.classList.toggle("on", x === b)); return; }
   if (b.dataset.k) { readSpec(); S.inp[b.dataset.k] = b.dataset.v; save(); return vSpec(); }
   if (b.dataset.pick) { S.pick[b.dataset.pick] = +b.dataset.i; save(); return vList(); }
+  if (b.dataset.cat) { if (b.dataset.cat === "pool") return nav("spec"); S.cat = b.dataset.cat; S.q = ""; S.zres = null; S.zmsg = ""; return nav("cat"); }
+  if (b.dataset.zc) { S.steam.cold = b.dataset.zc; S.zres = null; S.zmsg = ""; save(); return vCat(); }
+  if (b.dataset.spa) { S.spa[b.dataset.spa] = b.dataset.v; S.zmsg = ""; save(); return vCat(); }
+  if (b.dataset.step) { addCode(b.dataset.code, +b.dataset.step, S.cat); return vCat(); }
+  if (b.dataset.rm) { S.basket = S.basket.filter(x => x.id !== b.dataset.rm); save(); return vList(); }
+  if (b.dataset.use != null) return folderChoice({ choice: "use", folder_id: (S.matches[+b.dataset.use] || {}).id });
+  if (b.dataset.newfolder) return folderChoice({ choice: "new" });
   const a = b.dataset.act;
-  if (a === "mkclient") mkClient();
+  if (a === "tolist") nav("list");
+  else if (a === "more") nav("menu");
+  else if (a === "addspa") addSpa();
+  else if (a === "size") doSize();
+  else if (a === "addsize") addSize();
+  else if (a === "addcustom") addCustom();
+  else if (a === "mkclient") mkClient();
   else if (a === "calc") calc();
   else if (a === "stock") refreshStock();
   else if (a === "csv") download();
@@ -316,16 +458,25 @@ document.addEventListener("click", e => {
 });
 document.addEventListener("change", e => {
   const k = e.target.dataset && e.target.dataset.qty; if (k == null) return;
-  S.qty[k] = Math.max(0, Math.round(+e.target.value || 0)); save(); vList();
+  const q = Math.max(0, Math.round(+e.target.value || 0));
+  if (k.startsWith("b:")) { const it = S.basket.find(x => "b:" + x.id === k); if (it) { it.qty = q; if (!q) S.basket = S.basket.filter(x => x !== it); } save(); return vList(); }
+  S.qty[k] = q; save(); vList();
 });
-document.addEventListener("input", e => { if (e.target.id === "sageRef") { S.sageRef = e.target.value; save(); } });
+document.addEventListener("input", e => {
+  const id = e.target.id;
+  if (id === "sageRef") { S.sageRef = e.target.value; save(); }
+  else if (id === "srch") { S.q = e.target.value; const el = document.getElementById("sres"); if (el) el.innerHTML = searchHtml(); }
+  else if (id && id.startsWith("z_") && S[S.cat]) { S[S.cat][id.slice(2)] = e.target.value; save(); }
+});
 
 (function boot() {
   const p = new URLSearchParams(location.search), k = p.get("shop");
   if (k) { ls.set("hwx-shop-key", k); history.replaceState(null, "", location.pathname); }
   KEY = ls.get("hwx-shop-key") || "";
   S = ls.get("hwx-shop-session") || fresh();
-  if ((S.view === "list" || S.view === "quote") && !S.res) S.view = "client";
+  const f0 = fresh(); for (const k in f0) if (S[k] === undefined) S[k] = f0[k];   // sessions saved by an older version
+  if ((S.view === "list" || S.view === "quote") && !S.res && !S.basket.length) S.view = "client";
+  if ((S.view === "menu" || S.view === "cat") && !S.job) S.view = "client";
   if (S.view === "quote") S.view = "list";   // the stock list is not kept between visits: refresh it before quoting again
   S.stock = null;   // live prices are not kept between visits: refresh again
   render();
