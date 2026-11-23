@@ -207,7 +207,7 @@ function pending() {
   return { a, p, n: a + p };
 }
 let syncTimer;
-function scheduleSync() { clearTimeout(syncTimer); syncTimer = setTimeout(() => sync(false), 2500); refreshStatus(); }
+function scheduleSync() { clearTimeout(syncTimer); syncTimer = setTimeout(() => sync(false), 2500); refreshStatus(); if (navigator.onLine === false) regBg(); }
 async function post(body, ms) {
   const c = new AbortController(); const to = setTimeout(() => c.abort(), ms || 30000);
   try {
@@ -215,11 +215,35 @@ async function post(body, ms) {
     return await r.json();
   } finally { clearTimeout(to); }
 }
+/* The page and the background sender (sw.js) never send at the same time: whoever holds this lock sends, the other waits for its next turn. */
+async function withLock(fn) {
+  if (!navigator.locks) return fn();
+  return navigator.locks.request("hwx-sync", { ifAvailable: true }, l => l ? fn() : false);
+}
+/* If the background sender already sent some items while this page was shut or asleep, pick up its result so nothing goes twice. */
+async function mergeFromDb() {
+  const rec = await kvGet("job:" + J.id);
+  if (rec && rec.ans) for (const [k, a] of Object.entries(J.ans)) { const r = rec.ans[k]; if (a.dirty && r && !r.dirty && r.ts === a.ts) a.dirty = false; }
+  const all = (await phAll()).filter(p => p.job === J.id);
+  for (const p of photos) { const r = all.find(x => x.id === p.id); if (r && r.sent && !p.sent) { p.sent = true; p.driveId = r.driveId; } }
+}
+/* Ask the browser to send the waiting items when signal returns, even if the app is closed (Android Chrome; iPhone has no such thing and ignores it). */
+function regBg() { try { navigator.serviceWorker.ready.then(r => r.sync && r.sync.register("hwx-send")).catch(() => {}); } catch (e) {} }
 async function sync(manual) {
   if (J && J.pending && !syncing) await promote();
   if (syncing || !J || !J.token) return;
   syncing = true; lastErr = ""; refreshStatus();
   try {
+    const ran = await withLock(sendAll);
+    if (ran === false) setTimeout(() => sync(false), 5000);   // the background sender has the lock: look again shortly
+  } catch (e) {
+    lastErr = (e && e.name === "AbortError") ? "Slow or no signal" : "No signal or server busy";
+    if (pending().n) regBg();
+  } finally { syncing = false; refreshStatus(); }
+}
+async function sendAll() {
+  await mergeFromDb();
+  {
     // 1) answers
     const dirty = Object.entries(J.ans).filter(([, a]) => a.dirty);
     if (dirty.length) {
@@ -243,10 +267,11 @@ async function sync(manual) {
       p.sent = true; await phPut(p); refreshStatus();
     }
     lastOk = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  } catch (e) {
-    lastErr = (e && e.name === "AbortError") ? "Slow or no signal" : "No signal or server busy";
-  } finally { syncing = false; refreshStatus(); }
+  }
+  return true;
 }
+/* Try again by itself every minute while anything is waiting (a weak signal can look connected and still fail). */
+setInterval(() => { if (J && !syncing && pending().n) sync(false); }, 60000);
 let vprog = 0;
 async function sendVideo(p) {
   // The script opens a Drive upload session; the phone then sends the video straight to Drive in 8 MB pieces.
@@ -612,7 +637,7 @@ document.addEventListener("input", e => {
 });
 for (const id of ["cam", "lib", "vcam"]) document.getElementById(id).addEventListener("change", e => { const f = Array.from(e.target.files); e.target.value = ""; if (f.length) addPhotoFiles(f); });
 window.addEventListener("online", () => sync(false));
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { if (S.visit !== today()) { S.visit = today(); if (J && S.view === "hub") render(); } sync(false); } });
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden" && J && pending().n) regBg(); if (document.visibilityState === "visible") { if (S.visit !== today()) { S.visit = today(); if (J && S.view === "hub") render(); } sync(false); } });
 
 /* ---------- boot ---------- */
 async function loadQuestions() {
@@ -653,6 +678,7 @@ async function openJob(id, token) {
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
   try { await loadQuestions(); SCOPE = new Map(); TABOF = new Map(); for (const k in Q.tabs) Q.tabs[k].items.forEach(i => { if (i.code) TABOF.set(i.code, k); }); for (const k in Q.tabs) { const sc = Q.tabs[k].rep ? "r" : (Q.tabs[k].scope === "client" ? "c" : (Q.tabs[k].scope === "clientvisit" ? "cv" : "")); if (sc) Q.tabs[k].items.forEach(i => { if (i.code) SCOPE.set(i.code, sc); }); } } catch (e) { app.innerHTML = hdr("HWX Site Visit") + `<div class="note">Could not load the questions. Open the link once with signal.</div>`; return; }
   try { EXTRA = (await kvGet("extraopts")) || {}; applyExtra(); } catch (e) {}
+  try { await kvPut("swcfg", { api: API, device: deviceId }); } catch (e) {}   // the background sender (sw.js) reads this
   try { const tk = params.get("tech"); if (tk) { await kvPut("tech", tk); params.delete("tech"); history.replaceState(null, "", location.pathname + (params.toString() ? "?" + params.toString() : "")); } TECH = (await kvGet("tech")) || ""; } catch (e) {}
   const job = params.get("job"), t = params.get("t");
   if (job) await openJob(job, t); else { S.view = "jobs"; render(); }
