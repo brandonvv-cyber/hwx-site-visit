@@ -480,7 +480,11 @@ document.addEventListener("input", e => {
   if (S.view === "quote") S.view = "list";   // the stock list is not kept between visits: refresh it before quoting again
   S.stock = null;   // live prices are not kept between visits: refresh again
   render();
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then(r => r.update()).catch(() => {});
+  if ("serviceWorker" in navigator) {
+    const had = !!navigator.serviceWorker.controller;   // an update arrived while the old copy was open: reload once so staff always see the newest version
+    navigator.serviceWorker.addEventListener("controllerchange", () => { if (had && !window.__reloaded) { window.__reloaded = true; location.reload(); } });
+    navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then(r => r.update()).catch(() => {});
+  }
 })();
 </script>
 </body>
