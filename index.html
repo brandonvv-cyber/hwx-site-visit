@@ -98,7 +98,7 @@ input[type=file] { display: none; }
 <input type="file" id="lib" accept="image/*,video/*" multiple>
 <script>
 "use strict";
-const APP_VERSION = "2.0";
+const APP_VERSION = "2.1";
 const API = "https://script.google.com/macros/s/AKfycbwdahF6EsK6Xdo8Wy888LWhHfXSJZK7zliP-njXFUaqZr4txa3Q9MSPYqgxzC-8tLUMBg/exec";
 const OTHER = "Other (write it in the box below)";
 const EQ_REPAIR = ["Acrylic spa","Concrete spa","Pool equipment","Sauna or steam room","Water feature","Borehole or water treatment","Heat pump"];
@@ -542,6 +542,7 @@ function vHub() {
      <div class="count">Tap a big block. Come back here when it is done.</div>${blocks}
      <button class="block" data-act="gen"><span class="t"><b>Extra photos</b><span>${gp} photos not tied to a question</span></span><span class="go">&#9654;</span></button>
      <button class="block" data-act="finish"><span class="t"><b>Before you leave site</b><span>Check what is still unanswered</span></span><span class="go">&#9654;</span></button>
+     <button class="block" data-act="quotejob"><span class="t"><b>Quote this job</b><span>Pipework, repairs, spas, saunas: tap to a price (the shop counter screens, client filled in)</span></span><span class="go">&#9654;</span></button>
      <div class="row"><button class="small" data-act="kind">Change job type</button></div><div class="ver">Version ${APP_VERSION} &middot; questions ${esc(Q.version)}</div>`;
   setFoot(""); refreshStatus();
 }
@@ -619,6 +620,12 @@ document.addEventListener("click", async e => {
   if (act === "getjobs") { S.jobsMsg = "Downloading..."; vJobs(); const r = await loadMyJobs(); S.jobsMsg = r === "ok" ? "Jobs downloaded." : (r === "offline" ? "No signal. Try again when you have signal." : r); vJobs(); return; }
   if (act === "tohome") { S.view = "home"; history.replaceState(null, "", location.pathname); render(); return; }
   if (act === "homesite") { nav("jobs"); return; }
+  if (act === "quotejob") {   // same device, same site: hand the client over through local storage (never through the web address)
+    let k = ""; try { k = JSON.parse(localStorage.getItem("hwx-shop-key") || "null") || ""; } catch (e) {}
+    if (!k) { alert("Quoting is not set up on this phone yet. Ask the office for the quote link, open it once, then come back to this job."); return; }
+    try { localStorage.setItem("hwx-quote-prefill", JSON.stringify({ client: J.client || "", address: J.address || "", ts: Date.now() })); } catch (e) {}
+    location.href = "shop.html"; return;
+  }
   if (act === "homeshop") { let k = ""; try { k = JSON.parse(localStorage.getItem("hwx-shop-key") || "null") || ""; } catch (e) {} if (k) location.href = "shop.html"; else alert("Open the shop link once on this computer (it ends in ?shop=...). After that this button opens the counter."); return; }
   if (act === "newjob") { nav("newjob"); return; }
   if (act === "makejob") {

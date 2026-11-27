@@ -102,9 +102,9 @@ button.rm { margin-left: 8px; background: none; border: 0; color: var(--warn); t
 <script src="jobs.js"></script>
 <script>
 "use strict";
-const SHOP_VERSION = "1.5";
+const SHOP_VERSION = "1.6";
 const API = "https://script.google.com/macros/s/AKfycbwdahF6EsK6Xdo8Wy888LWhHfXSJZK7zliP-njXFUaqZr4txa3Q9MSPYqgxzC-8tLUMBg/exec";
-const STAFF = ["Janine", "Alett", "Patience", "Other"];
+const STAFF = ["Janine", "Alett", "Patience", "Technician", "Other"];
 const app = document.getElementById("app"), foot = document.getElementById("foot");
 const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const money = n => "R " + (Math.round(n * 100) / 100).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -671,6 +671,18 @@ document.addEventListener("input", e => {
   KEY = ls.get("hwx-shop-key") || "";
   S = ls.get("hwx-shop-session") || fresh();
   const f0 = fresh(); for (const k in f0) if (S[k] === undefined) S[k] = f0[k];   // sessions saved by an older version
+  try {   // a technician tapped "Quote this job" in the site visit app: start the quote for that client (fresh quote unless it is already the same client)
+    const pf = ls.get("hwx-quote-prefill");
+    if (pf) {
+      localStorage.removeItem("hwx-quote-prefill");
+      if (Date.now() - (pf.ts || 0) < 3600000 && pf.address) {
+        const same = S.job && S.client && S.client.name === pf.client && S.client.address === pf.address;
+        if (!same) { S = fresh(); S.staff = "Technician"; S.client.name = pf.client || ""; S.client.address = pf.address || ""; S.view = "client"; }
+        else S.view = "menu";
+        save();
+      }
+    }
+  } catch (e) {}
   if ((S.view === "list" || S.view === "quote") && !S.res && !S.basket.length) S.view = "client";
   if ((S.view === "menu" || S.view === "cat") && !S.job) S.view = "client";
   if (S.view === "quote") S.view = "list";   // the stock list is not kept between visits: refresh it before quoting again
