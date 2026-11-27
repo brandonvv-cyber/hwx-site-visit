@@ -1,4 +1,4 @@
-const CACHE = 'hwx-visit-v17';
+const CACHE = 'hwx-visit-v18';
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'questions.json', 'shop.html', 'shop.webmanifest', 'spec.js', 'quote.js', 'logo.jpg', 'catdata.js', 'cat.js', 'sauna.js', 'pipe.js', 'jobs.js'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));

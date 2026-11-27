@@ -102,7 +102,7 @@ button.rm { margin-left: 8px; background: none; border: 0; color: var(--warn); t
 <script src="jobs.js"></script>
 <script>
 "use strict";
-const SHOP_VERSION = "1.6";
+const SHOP_VERSION = "1.7";
 const API = "https://script.google.com/macros/s/AKfycbwdahF6EsK6Xdo8Wy888LWhHfXSJZK7zliP-njXFUaqZr4txa3Q9MSPYqgxzC-8tLUMBg/exec";
 const STAFF = ["Janine", "Alett", "Patience", "Technician", "Other"];
 const app = document.getElementById("app"), foot = document.getElementById("foot");
@@ -435,22 +435,49 @@ function vCat() {
   if (S.cat === "reticulation") h += `<div class="hint">For a borehole or a full water treatment plant, book a site visit (the water must be tested first). Use this screen for off-the-shelf pumps, tanks and parts.</div>`;
   (HWXCat.QUICK[S.cat] || []).forEach(([t, codes]) => { h += `<div class="sec">${esc(t)}</div>` + codes.map(rowFor).join(""); });
   h += `<div class="sec">Search the whole Sage list</div><input class="w" id="srch" placeholder="Part of a name or a code, e.g. pump or SAO9" value="${esc(S.q || "")}" autocomplete="off"><div id="sres">${searchHtml()}</div>
-    <div class="sec">Something not in Sage</div><div class="kv"><input class="w" id="cu_name" placeholder="What is it?"><div class="grid3"><div><label class="f">Price ex VAT (blank = price on request)</label><input class="w" id="cu_price" inputmode="decimal"></div><div><label class="f">Quantity</label><input class="w" id="cu_qty" inputmode="numeric" value="1"></div><div><label class="f">&nbsp;</label><button class="btn" style="max-width:none;width:100%;min-height:58px" data-act="addcustom">Add it</button></div></div></div>
+    ${cuBlock()}
     <div id="cmsg2"></div><div class="ver">Sage prices as of ${esc(HWXCat.asof || "?")}; Refresh stock on the list screen brings them up to date.</div></div>`;
   app.innerHTML = h;
   const n = S.basket.filter(b => b.cat === S.cat).length;
   setFoot(`<button class="btn alt" data-go="menu">All categories</button><button class="btn" data-act="tolist">See the list and quote${n ? " (" + n + " here)" : ""}</button>`);
   window.scrollTo(0, sy);
 }
+// An item that is not in Sage: name, supplier, quantity, our cost, mark-up and a photo (the photo goes on the client quote). Always available on every category screen.
+let CU_IMG = "";
+const cuNum = id => { const v = parseFloat(String((document.getElementById(id) || {}).value || "").replace(",", ".")); return isFinite(v) ? v : 0; };
+function cuSell() { const cost = cuNum("cu_cost"), mk = Math.max(0, cuNum("cu_mk")); return cost > 0 ? Math.round(cost * (1 + mk / 100) * 100) / 100 : 0; }
+function cuBlock() {
+  const mk = ls.get("hwx-cu-markup"), mkv = mk == null ? 40 : mk;
+  return `<div class="sec">Something not in Sage</div><div class="hint">A part we get from a supplier that is not on our Sage list. Type what it is, the quantity, our cost and add a photo of it: the photo goes on the client quote.</div>
+    <div class="kv"><label class="f" style="margin-top:0">What is it?</label><input class="w" id="cu_name" placeholder="e.g. Pedrollo pressure switch 3/4 inch" autocomplete="off">
+    <label class="f">Supplier (stays on the staff list only)</label><input class="w" id="cu_sup" placeholder="e.g. Turf Ag" autocomplete="off">
+    <div class="grid3"><div><label class="f">Quantity</label><input class="w" id="cu_qty" inputmode="numeric" value="1"></div><div><label class="f">Our cost each, ex VAT</label><input class="w" id="cu_cost" inputmode="decimal" placeholder="blank = price on request"></div><div><label class="f">Mark-up %</label><input class="w" id="cu_mk" inputmode="decimal" value="${esc(mkv)}"></div></div>
+    <div class="rd" id="cu_sell">Selling price each: <b>enter the cost</b>. Mark-up 40% is the usual starting point (not confirmed for every job); type 0 if the cost you typed is already the selling price.</div>
+    <label class="f">Photo of the item</label><input id="cu_pic" type="file" accept="image/*" style="font-size:17px;width:100%"><div id="cu_prev">${CU_IMG ? `<img src="${CU_IMG}" style="max-width:160px;max-height:160px;border-radius:8px;margin-top:8px;border:2px solid var(--line)">` : ""}</div>
+    <button class="btn" style="max-width:none;width:100%;margin-top:14px" data-act="addcustom">Add this item to the quote</button></div>`;
+}
+function cuPhoto(file) {   // shrink the photo so many of them fit on the device and in the quote PDF
+  const prev = document.getElementById("cu_prev"); if (!file) return;
+  const rd = new FileReader();
+  rd.onload = () => { const im = new Image(); im.onload = () => {
+    const k = Math.min(1, 560 / Math.max(im.width, im.height)), cv = document.createElement("canvas"); cv.width = Math.round(im.width * k); cv.height = Math.round(im.height * k);
+    const cx = cv.getContext("2d"); cx.fillStyle = "#fff"; cx.fillRect(0, 0, cv.width, cv.height); cx.drawImage(im, 0, 0, cv.width, cv.height);
+    CU_IMG = cv.toDataURL("image/jpeg", 0.7); if (prev) prev.innerHTML = `<img src="${CU_IMG}" style="max-width:160px;max-height:160px;border-radius:8px;margin-top:8px;border:2px solid var(--line)">`;
+  }; im.onerror = () => { if (prev) prev.innerHTML = `<div class="note">That file is not a picture. Try another photo.</div>`; }; im.src = rd.result; };
+  rd.readAsDataURL(file);
+}
 function addCustom() {
-  const g = id => (document.getElementById(id) || {}).value || "", name = g("cu_name").trim(), price = parseFloat(g("cu_price").replace(",", ".")), qty = Math.max(1, Math.round(+g("cu_qty") || 1)), m = document.getElementById("cmsg2");
+  const name = ((document.getElementById("cu_name") || {}).value || "").trim(), sup = ((document.getElementById("cu_sup") || {}).value || "").trim(), qty = Math.max(1, Math.round(cuNum("cu_qty") || 1)), cost = cuNum("cu_cost"), mk = Math.max(0, cuNum("cu_mk")), price = cuSell(), m = document.getElementById("cmsg2");
   if (!name) { m.innerHTML = `<div class="note">Type what the item is.</div>`; return; }
-  S.basket.push({ id: uid(), cat: S.cat, desc: name, price: price > 0 ? price : null, qty, custom: true, note: price > 0 ? "" : "Price from the supplier." }); save(); vCat();
-  const m2 = document.getElementById("cmsg2"); if (m2) m2.innerHTML = `<div class="ok">Added "${esc(name)}".</div>`;
+  ls.set("hwx-cu-markup", mk);
+  const internal = [sup ? "Supplier: " + sup : "", cost > 0 ? "Our cost " + money(cost) + " each, mark-up " + mk + "%" : "No cost entered"].filter(Boolean).join(". ");
+  S.basket.push({ id: uid(), cat: S.cat, desc: name, price: price > 0 ? price : null, qty, custom: true, note: price > 0 ? "" : "Price from the supplier.", internal, img: CU_IMG || "" });
+  CU_IMG = ""; save(); vCat();
+  const m2 = document.getElementById("cmsg2"); if (m2) m2.innerHTML = `<div class="ok">Added "${esc(name)}"${price > 0 ? " at " + money(price) + " each ex VAT" : " (price on request)"}.</div>`;
 }
 function bLine(b) {
   const m = b.code ? HWXCat.get(b.code) : null;
-  return { code: b.code || "", desc: b.code ? (m ? m.desc : b.code) : b.desc, price: b.code ? (m ? m.price : null) : b.price, onhand: m ? m.qty : null, qty: b.qty, key: "b:" + b.id, bid: b.id, grp: b.cat, note: b.note || "", internal: b.internal || "", design: b.design || null };
+  return { code: b.code || "", desc: b.code ? (m ? m.desc : b.code) : b.desc, price: b.code ? (m ? m.price : null) : b.price, onhand: m ? m.qty : null, qty: b.qty, key: "b:" + b.id, bid: b.id, grp: b.cat, note: b.note || "", internal: b.internal || "", design: b.design || null, img: b.img || "" };
 }
 const optLines = () => S.basket.filter(b => b.opt).map(bLine);
 
@@ -492,7 +519,7 @@ function vList() {
   }
   const ls_ = lines(); let sub = 0;
   h += `<div class="sec">Full list for Sage</div>` + (ls_.length ? `<table><tr><th>Code</th><th>Description</th><th class="n">Qty</th><th class="n">Unit ex VAT</th><th class="n">Total ex VAT</th></tr>` : `<div class="hint">Nothing added yet. Tap "Add more" to pick a category.</div><table>`);
-  for (const l of ls_) { const t = l.price > 0 ? l.price * l.qty : 0; sub += t; const fl = flagOf(l); h += `<tr><td>${esc(l.code || "not in Sage")}</td><td>${esc(l.desc || l.note)}${l.note && l.desc ? `<span class="s">${esc(l.note)}</span>` : ""}${l.internal ? `<span class="s">${esc(l.internal)}</span>` : ""}${fl ?`<span class="flag">${esc(fl)}</span>` : ""}${l.bid ? `<button class="rm" data-rm="${esc(l.bid)}">remove</button>` : ""}</td><td class="n"><input data-qty="${esc(l.key)}" inputmode="numeric" value="${l.qty}"></td><td class="n">${l.price > 0 ? money(l.price) : "-"}</td><td class="n">${l.price > 0 ? money(t) : "-"}</td></tr>`; }
+  for (const l of ls_) { const t = l.price > 0 ? l.price * l.qty : 0; sub += t; const fl = flagOf(l); h += `<tr><td>${esc(l.code || "not in Sage")}</td><td>${l.img ? `<img src="${l.img}" alt="" style="width:56px;height:56px;object-fit:cover;border-radius:6px;float:left;margin:0 8px 4px 0">` : ""}${esc(l.desc || l.note)}${l.note && l.desc ? `<span class="s">${esc(l.note)}</span>` : ""}${l.internal ? `<span class="s">${esc(l.internal)}</span>` : ""}${fl ?`<span class="flag">${esc(fl)}</span>` : ""}${l.bid ? `<button class="rm" data-rm="${esc(l.bid)}">remove</button>` : ""}</td><td class="n"><input data-qty="${esc(l.key)}" inputmode="numeric" value="${l.qty}"></td><td class="n">${l.price > 0 ? money(l.price) : "-"}</td><td class="n">${l.price > 0 ? money(t) : "-"}</td></tr>`; }
   h += `<tr class="tot"><td></td><td>Subtotal ex VAT</td><td></td><td></td><td class="n">${money(sub)}</td></tr><tr class="tot"><td></td><td>VAT 15%</td><td></td><td></td><td class="n">${money(sub * 0.15)}</td></tr><tr class="tot"><td></td><td>Total incl VAT</td><td></td><td></td><td class="n">${money(sub * 1.15)}</td></tr></table>`;
   const ol = optLines();
   if (ol.length) h += `<div class="sec">Optional extras (shown on the quote, not in the total)</div><table>${ol.map(l => `<tr><td>${esc(l.desc)}${l.code ? `<span class="s">${esc(l.code)}</span>` : ""}${l.note ? `<span class="s">${esc(l.note)}</span>` : ""}<button class="rm" data-rm="${esc(l.bid)}">remove</button></td><td class="n">${l.price > 0 ? money(l.price * l.qty) + " ex VAT" : "price on request"}</td></tr>`).join("")}</table>`;
@@ -553,9 +580,9 @@ function quoteData() {
   const h = handoff(), i = S.inp, r = S.res, p = r ? chosen("pump") : null, f = r ? chosen("filter") : null; let total = 0, onRequest = 0;
   const money2 = l => ({ unit: Math.round(l.price * 1.15 * 100) / 100, total: Math.round(l.price * l.qty * 1.15 * 100) / 100 });
   const L = h.L.map(l => {
-    if (!(l.price > 0)) { onRequest++; const nm = { pump: "pump", filter: "filter", weir: "weir", return: "return", cover: "pump cover" }[l.grp]; return { grp: l.grp, desc: l.brand && nm ? l.brand + (l.kw ? " " + l.kw + " kW" : "") + " " + nm : (l.desc || l.note), qty: l.qty, price: null, note: l.design ? l.note : "" }; }
+    if (!(l.price > 0)) { onRequest++; const nm = { pump: "pump", filter: "filter", weir: "weir", return: "return", cover: "pump cover" }[l.grp]; return { grp: l.grp, desc: l.brand && nm ? l.brand + (l.kw ? " " + l.kw + " kW" : "") + " " + nm : (l.desc || l.note), qty: l.qty, price: null, note: l.design ? l.note : "", img: l.img || "" }; }
     const m = money2(l); total += m.total;
-    return { grp: l.grp, desc: l.desc || l.note, qty: l.qty, price: l.price, unit: m.unit, total: m.total, note: l.code && flagOf(l) && S.stock && S.stock.ok ? "Availability is confirmed when you order" : "" };
+    return { grp: l.grp, desc: l.desc || l.note, qty: l.qty, price: l.price, unit: m.unit, total: m.total, img: l.img || "", note: l.code && flagOf(l) && S.stock && S.stock.ok ? "Availability is confirmed when you order" : "" };
   });
   const O = optLines().map(l => l.price > 0 ? Object.assign({ desc: l.desc, qty: l.qty, price: l.price, note: l.note }, money2(l)) : { desc: l.desc, qty: l.qty, price: null, note: l.note });
   const now = new Date(), until = new Date(now.getTime() + HWXQuote.VALID_DAYS * 864e5), ex = total / 1.15;
@@ -649,6 +676,7 @@ document.addEventListener("click", e => {
   else if (a === "newclient") { if (confirm("Start a new client? This list stays in the client's folder only if you saved it.")) { S = fresh(); save(); render(); } }
 });
 document.addEventListener("change", e => {
+  if (e.target.id === "cu_pic") return cuPhoto(e.target.files && e.target.files[0]);
   const k = e.target.dataset && e.target.dataset.qty; if (k == null) return;
   const q = Math.max(0, Math.round(+e.target.value || 0));
   if (k.startsWith("b:")) { const it = S.basket.find(x => "b:" + x.id === k); if (it) { it.qty = q; if (!q) S.basket = S.basket.filter(x => x !== it); } save(); return vList(); }
@@ -659,6 +687,7 @@ document.addEventListener("input", e => {
   if (id === "sageRef") { S.sageRef = e.target.value; save(); }
   else if (id === "srch") { S.q = e.target.value; const el = document.getElementById("sres"); if (el) el.innerHTML = searchHtml(); }
   else if (id && /^sw_[WDH]$/.test(id)) swInput(id.slice(3), e.target.value);
+  else if (id === "cu_cost" || id === "cu_mk") { const s = cuSell(), el = document.getElementById("cu_sell"); if (el) el.innerHTML = s > 0 ? "Selling price each: <b>" + money(s) + "</b> ex VAT (cost + " + Math.max(0, cuNum("cu_mk")) + "%)" : "Selling price each: <b>enter the cost</b>."; }
   else if (id === "rp_h" || id === "rp_km") rpInput(id, e.target.value);
   else if (id === "pw_m") pwInput("m", e.target.value);
   else if (id === "pw_rate") pwInput("rate", e.target.value);

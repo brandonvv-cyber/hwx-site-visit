@@ -76,9 +76,11 @@
   }
 
   function svgImg(svg) { return new Promise(res => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg); }); }
+  function picImg(src) { return new Promise(res => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = src; }); }
   /* ---------- the quote ---------- */
   async function build(d) {
     const logo = await loadLogo(), pages = [], sImg = d.saunaSvg ? await svgImg(d.saunaSvg) : null;
+    await Promise.all((d.lines || []).filter(l => l.img).map(async l => { l._im = await picImg(l.img); }));   // photos of items that are not in Sage
     let cv, ctx, y;
     const newPage = first => {
       cv = document.createElement("canvas"); cv.width = W; cv.height = H; ctx = cv.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H); pages.push(cv);
@@ -131,8 +133,9 @@
       icon(ctx, ICON[key] || key, M + 6, y + 6, 78); txt(ctx, title, cDesc, y + 40, { bold: true, size: 26, color: TEAL });
       ctx.strokeStyle = LINE; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cDesc, y + 56); ctx.lineTo(W - M, y + 56); ctx.stroke(); y += 78;
       for (const l of g) {
-        ctx.font = rowFont; const lines = wrap(ctx, l.desc, wDesc), noteL = l.note ? wrap(ctx, l.note, wDesc) : [], rh = Math.max(46, lines.length * 30 + noteL.length * 26 + 16);
+        ctx.font = rowFont; const lines = wrap(ctx, l.desc, wDesc), noteL = l.note ? wrap(ctx, l.note, wDesc) : [], rh = Math.max(46, lines.length * 30 + noteL.length * 26 + 16, l._im ? 100 : 0);
         if (y + rh > H - 150) { newPage(false); head(); }
+        if (l._im) { const k = Math.min(88 / l._im.width, 88 / l._im.height), pw = l._im.width * k, ph = l._im.height * k; ctx.drawImage(l._im, M + 6 + (88 - pw) / 2, y + 6 + (88 - ph) / 2, pw, ph); ctx.strokeStyle = LINE; ctx.lineWidth = 1; ctx.strokeRect(M + 6, y + 6, 88, 88); }
         lines.forEach((t, i) => txt(ctx, t, cDesc, y + 28 + i * 30, { size: 23 }));
         noteL.forEach((t, i) => txt(ctx, t, cDesc, y + 28 + lines.length * 30 + i * 26 - 2, { size: 19, color: MUTED }));
         txt(ctx, String(l.qty), cQty, y + 28, { size: 23, align: "center" });
