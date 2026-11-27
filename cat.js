@@ -18,6 +18,7 @@
     { key: "spa", title: "Spa", sub: "Superior spas with the optional extras", icon: "spa" },
     { key: "sauna", title: "Sauna", sub: "Design a custom sauna step by step, or pick ready-made saunas, heaters and parts", icon: "sauna" },
     { key: "steam", title: "Steam room", sub: "Steam generator sized from the room", icon: "steam" },
+    { key: "pipe", title: "Pipework and glue", sub: "Pick the pipe size, tap the fittings: glue and the total are worked out", icon: "pipe" },
     { key: "reticulation", title: "Water reticulation", sub: "Pumps, tanks and water treatment parts", icon: "tap" },
     { key: "feature", title: "Water features", sub: "Nozzles, pumps, lights, rain curtains", icon: "fountain" },
     { key: "other", title: "Anything else", sub: "Search the whole Sage list or type your own item", icon: "box" },

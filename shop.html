@@ -98,9 +98,10 @@ button.rm { margin-left: 8px; background: none; border: 0; color: var(--warn); t
 <script src="catdata.js"></script>
 <script src="cat.js"></script>
 <script src="sauna.js"></script>
+<script src="pipe.js"></script>
 <script>
 "use strict";
-const SHOP_VERSION = "1.3";
+const SHOP_VERSION = "1.4";
 const API = "https://script.google.com/macros/s/AKfycbwdahF6EsK6Xdo8Wy888LWhHfXSJZK7zliP-njXFUaqZr4txa3Q9MSPYqgxzC-8tLUMBg/exec";
 const STAFF = ["Janine", "Alett", "Patience", "Other"];
 const app = document.getElementById("app"), foot = document.getElementById("foot");
@@ -108,7 +109,7 @@ const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&am
 const money = n => "R " + (Math.round(n * 100) / 100).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const ls = { get(k) { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} } };
 let KEY = "", S = null;
-function fresh() { return { view: "client", staff: (S && S.staff) || "", client: { name: "", phone: "", address: "", email: "" }, job: null, basket: [], cat: "", q: "", spa: { model: "Atlantic", grade: "B", htc: "HTCB" }, sauna: { L: "", W: "", H: "", glass: "" }, sw: HWXSauna.newDesign(), steam: { L: "", W: "", H: "", glass: "" }, zres: null, zmsg: "", inp: { mode: "vol", volumeL: "", len: "", wid: "", depth: "", use: "domestic", turnover: 6, pos: "level", height: "", distance: "", bends: "3-5", weirs: 1, returns: "" }, res: null, pick: {}, qty: {}, stock: null, sageRef: "" }; }
+function fresh() { return { view: "client", staff: (S && S.staff) || "", client: { name: "", phone: "", address: "", email: "" }, job: null, basket: [], cat: "", q: "", spa: { model: "Atlantic", grade: "B", htc: "HTCB" }, sauna: { L: "", W: "", H: "", glass: "" }, sw: HWXSauna.newDesign(), pw: HWXPipe.newDesign(ls.get("hwx-pipe-rate") || ""), steam: { L: "", W: "", H: "", glass: "" }, zres: null, zmsg: "", inp: { mode: "vol", volumeL: "", len: "", wid: "", depth: "", use: "domestic", turnover: 6, pos: "level", height: "", distance: "", bends: "3-5", weirs: 1, returns: "" }, res: null, pick: {}, qty: {}, stock: null, sageRef: "" }; }
 function save() { ls.set("hwx-shop-session", S); }
 function setFoot(h) { foot.innerHTML = h; foot.hidden = !h; }
 function hdr(t, back) { return `<div class="top">${back ? `<button class="back" data-go="${back}">&#9664; Back</button>` : ""}<h1>${esc(t)}</h1></div>`; }
@@ -320,12 +321,64 @@ function addSauna() {
   S.basket.push({ id: uid(), cat: "sauna", desc: t.desc, price: null, qty: 1, custom: true, note: t.note, internal: t.heaterNote, design: d });
   S.zmsg = "Added the custom sauna to the quote. Change it and add again for a second sauna, or remove it on the list screen."; save(); vCat();
 }
+// Pipework and glue: pipe size, metres, fittings, glue and labour in tap steps; the running list is on the right (PROPOSED glue allowance, see pipe.js)
+function pwAside() {
+  const r = HWXPipe.calc(S.pw), M = HWXPipe.money;
+  const rows = r.lines.map(l => `<tr><td>${esc(l.label)}<span class="s">${esc(l.code)}${l.onhand != null && l.onhand <= 0 ? " &middot; none on hand" : ""}${l.price > 0 ? "" : " &middot; no price in Sage"}</span></td><td class="n">${l.qty}</td><td class="n">${l.price > 0 ? M(l.price * l.qty) : "&ndash;"}</td></tr>`).join("")
+    + (r.labour ? `<tr><td>Labour<span class="s">${r.labour.joints} joints${r.labour.price ? " at " + M(r.labour.price) : ": the office prices it"}</span></td><td class="n">${r.labour.joints}</td><td class="n">${r.labour.total ? M(r.labour.total) : "&ndash;"}</td></tr>` : "");
+  return `<div class="wzcard">${rows ? `<table><tr><th>Item</th><th class="n">Qty</th><th class="n">Ex VAT</th></tr>${rows}<tr class="tot"><td colspan="2">Total so far</td><td class="n">${M(r.total)}</td></tr></table>` : `<div class="hint" style="margin:0">Nothing yet. Choose a size and add pipe or fittings.</div>`}
+    ${r.joints ? `<div class="spc"><div><span>Glued joints</span><b>${r.joints}</b></div><div><span>Cement needed</span><b>${r.ml ? "about " + r.ml + " ml" : "none added"}</b></div></div>` : ""}
+    ${r.unpriced ? `<div class="note">${r.unpriced} line${r.unpriced > 1 ? "s have" : " has"} no price in Sage, so the total is short by that: the office prices ${r.unpriced > 1 ? "them" : "it"}.</div>` : ""}
+    ${r.note.map(t => `<div class="rd">${esc(t)}</div>`).join("")}</div>`;
+}
+function pwHtml() {
+  const H = HWXPipe, d = H.normalize(S.pw), r = H.calc(d), g = HWXCat.get, M = H.money, P = H.SZ[d.dia], tile = (path, v, inner, on) => `<button class="tl${on ? " on" : ""}" data-pw="${path}" data-v="${esc(v)}">${inner}</button>`;
+  const st = [];
+  st.push(swStep(1, "Pipe size", d.dia + " mm " + P.cls, `<div class="tls">${H.SIZES.map(s => { const m = g(H.SZ[s].pipe); return tile("dia", s, `<span class="tn">${s} mm</span><span class="tb">${H.SZ[s].cls} &middot; ${m && m.price > 0 ? M(m.price) + " per metre" : "no metre price in Sage"}</span>`, s === d.dia); }).join("")}</div><div class="hint" style="margin-top:8px">Class 9 PVC-U pressure pipe, solvent weld (GEN-PIP-01). 20 mm only comes in Class 16.</div>`));
+  st.push(swStep(2, "Pipe length", d.m + " m", `<div class="step" style="margin-bottom:10px"><button data-pw="m+" data-v="-1">&minus;</button><input class="w" id="pw_m" inputmode="numeric" value="${d.m}" style="width:120px;text-align:center"><button data-pw="m+" data-v="1">+</button><span class="rd" style="margin:0 0 0 8px">metres</span></div>
+    <div class="chips">${[3, 6, 12, 30].map(n => `<button class="chip" data-pw="m+" data-v="${n}">+ ${n} m</button>`).join("")}<button class="chip" data-pw="m+" data-v="${-d.m}">Clear</button></div>
+    <div class="rd" id="pwlen">${d.m ? "<b>" + Math.ceil(d.m / 6) + "</b> x 6 m length" + (Math.ceil(d.m / 6) > 1 ? "s" : "") + (r.autoConn ? " &middot; <b>" + r.autoConn + "</b> connector" + (r.autoConn > 1 ? "s" : "") + " added at the pipe joins" : "") : "Tap + or type the metres."}</div>
+    <div class="chips" style="margin-top:8px"><button class="chip${d.autoConn ? " on" : ""}" data-pw="autoConn">Add connectors at pipe joins (every 6 m)</button></div>`));
+  const bu = H.bushes(d.dia);
+  st.push(swStep(3, "Fittings", r.joints + " glued joint" + (r.joints === 1 ? "" : "s"), `<div class="tls">${H.FIT.map(([k, name, j, sub]) => { const c = H.code(d.dia, k, d); if (!c) return ""; const m = g(c), q = d.f[k]; return `<div class="tl${q ? " on" : ""}"><span class="tn">${esc(name)}${k === "bush" && d.bush ? " to " + esc(d.bush) + " mm" : ""}</span><span class="tb">${esc(sub)} &middot; ${m && m.price > 0 ? M(m.price) : "no price"}${m && m.qty <= 0 ? " &middot; none on hand" : ""}</span><div class="step" style="margin-top:6px"><button data-pw="f" data-v="${k}:-1">&minus;</button><b>${q}</b><button data-pw="f" data-v="${k}:1">+</button></div></div>`; }).join("")}</div>
+    ${bu.length && H.code(d.dia, "bush", d) ? `<div class="sub">Reducing bush steps down to</div><div class="chips">${bu.map(s => `<button class="chip${String(s) === String(d.bush) ? " on" : ""}" data-pw="bush" data-v="${s}">${s} mm</button>`).join("")}</div>` : ""}`));
+  st.push(swStep(4, "Solvent cement (glue)", d.glue === "none" ? "none added" : r.ml ? "about " + r.ml + " ml" : "from the joints", `<div class="chips"><button class="chip${d.glue === "auto" ? " on" : ""}" data-pw="glue" data-v="auto">Work it out</button><button class="chip${d.glue === "none" ? " on" : ""}" data-pw="glue" data-v="none">None (client supplies)</button></div>
+    <div class="hint" style="margin-top:8px">Weld-On cement from Sage: ${H.ML[d.dia]} ml per ${d.dia} mm joint plus 25% for waste, rounded up to whole cans. This allowance is proposed, not confirmed. Primer and cleaner are not in Sage, so they are not added.</div>`));
+  st.push(swStep(5, "Labour", d.labour ? (r.labour && r.labour.price ? M(r.labour.price) + " per joint" : "office prices it") : "not included", `<div class="chips"><button class="chip${d.labour ? " on" : ""}" data-pw="labour">Include labour per glued joint</button></div>${d.labour ? `<label class="f">Rate per joint, ex VAT (blank = the office prices it)</label><input class="w" id="pw_rate" inputmode="decimal" value="${esc(d.rate)}" placeholder="e.g. 45"><div class="rd">The rate is remembered on this computer.</div>` : ""}`));
+  return `<div class="hint">Tap through the steps. The list on the right keeps the running total. Add it to the quote when it is right, then do another run if needed.</div>
+    <div class="wzgrid"><div class="wz">${st.join("")}<button class="btn" style="max-width:none;width:100%;margin:18px 0 4px" data-act="addpipe">Add this pipework to the quote</button><div id="zmsg">${S.zmsg ? `<div class="ok">${esc(S.zmsg)}</div>` : ""}</div></div><aside id="pwaside">${pwAside()}</aside></div>`;
+}
+function pwAct(path, v) {
+  const d = S.pw;
+  if (path === "dia") d.dia = +v;
+  else if (path === "m+") d.m = (+d.m || 0) + (+v || 0);
+  else if (path === "f") { const [k, n] = String(v).split(":"); d.f[k] = (+d.f[k] || 0) + (+n || 0); }
+  else if (path === "bush") d.bush = v;
+  else if (path === "glue") d.glue = v;
+  else if (path === "autoConn" || path === "labour") d[path] = !d[path];
+  HWXPipe.normalize(d); S.zmsg = ""; save(); vCat();
+}
+function pwInput(k, v) {
+  const d = S.pw; if (k === "m") d.m = Math.round(+String(v).replace(",", ".") || 0); else { d.rate = v; ls.set("hwx-pipe-rate", v); }
+  HWXPipe.normalize(d); save();
+  const a = document.getElementById("pwaside"); if (a) a.innerHTML = pwAside();
+}
+function addPipe() {
+  const d = HWXPipe.normalize(S.pw), r = HWXPipe.calc(d), m = document.getElementById("zmsg");
+  if (!r.lines.length) { if (m) m.innerHTML = `<div class="note">Add some pipe or fittings first.</div>`; return; }
+  r.lines.forEach(l => addCode(l.code, l.qty, "pipe"));
+  if (r.labour) S.basket.push({ id: uid(), cat: "pipe", desc: "Pipework labour (" + d.dia + " mm, " + r.labour.joints + " glued joints)", price: r.labour.price, qty: r.labour.joints, custom: true, note: r.labour.price ? "" : "Labour price confirmed by the office." });
+  S.zmsg = "Added " + r.lines.length + " line" + (r.lines.length > 1 ? "s" : "") + " to the quote. Start another run, or open the list.";
+  d.m = 0; for (const k in d.f) d.f[k] = 0;
+  save(); vCat();
+}
 function vCat() {
-  const c = HWXCat.CATS.find(x => x.key === S.cat) || HWXCat.CATS[6], sy = window.scrollY;
-  let h = hdr(c.title, "menu") + `<div class="wrap${S.cat === "sauna" ? " wzwrap" : ""}"><div class="ok">${esc(S.client.name)} &middot; ${esc(S.client.address)}</div>`;
+  const c = HWXCat.CATS.find(x => x.key === S.cat) || HWXCat.CATS.find(x => x.key === "other"), sy = window.scrollY;
+  let h = hdr(c.title, "menu") + `<div class="wrap${S.cat === "sauna" || S.cat === "pipe" ? " wzwrap" : ""}"><div class="ok">${esc(S.client.name)} &middot; ${esc(S.client.address)}</div>`;
   if (S.cat === "spa") h += spaBlock();
   if (S.cat === "sauna") h += swHtml() + `<div class="sec" style="margin-top:34px">Ready-made saunas, heaters and parts (Sage)</div>`;
   if (S.cat === "steam") h += sizeBlock(S.cat);
+  if (S.cat === "pipe") h += pwHtml() + `<div class="sec" style="margin-top:34px">Valves, pumps and other parts (Sage)</div>`;
   if (S.cat === "reticulation") h += `<div class="hint">For a borehole or a full water treatment plant, book a site visit (the water must be tested first). Use this screen for off-the-shelf pumps, tanks and parts.</div>`;
   (HWXCat.QUICK[S.cat] || []).forEach(([t, codes]) => { h += `<div class="sec">${esc(t)}</div>` + codes.map(rowFor).join(""); });
   h += `<div class="sec">Search the whole Sage list</div><input class="w" id="srch" placeholder="Part of a name or a code, e.g. pump or SAO9" value="${esc(S.q || "")}" autocomplete="off"><div id="sres">${searchHtml()}</div>
@@ -506,6 +559,7 @@ document.addEventListener("click", e => {
   if (b.dataset.go) return nav(b.dataset.go);
   if (b.dataset.sw) return swSet(b.dataset.sw, b.dataset.v);
   if (b.dataset.swt) return swToggle(b.dataset.swt);
+  if (b.dataset.pw) return pwAct(b.dataset.pw, b.dataset.v);
   if (b.dataset.staff) { S.staff = b.dataset.staff; save(); document.querySelectorAll("[data-staff]").forEach(x => x.classList.toggle("on", x === b)); return; }
   if (b.dataset.k) { readSpec(); S.inp[b.dataset.k] = b.dataset.v; save(); return vSpec(); }
   if (b.dataset.pick) { S.pick[b.dataset.pick] = +b.dataset.i; save(); return vList(); }
@@ -523,6 +577,7 @@ document.addEventListener("click", e => {
   else if (a === "size") doSize();
   else if (a === "addsize") addSize();
   else if (a === "addsauna") addSauna();
+  else if (a === "addpipe") addPipe();
   else if (a === "addcustom") addCustom();
   else if (a === "mkclient") mkClient();
   else if (a === "calc") calc();
@@ -548,6 +603,8 @@ document.addEventListener("input", e => {
   if (id === "sageRef") { S.sageRef = e.target.value; save(); }
   else if (id === "srch") { S.q = e.target.value; const el = document.getElementById("sres"); if (el) el.innerHTML = searchHtml(); }
   else if (id && /^sw_[WDH]$/.test(id)) swInput(id.slice(3), e.target.value);
+  else if (id === "pw_m") pwInput("m", e.target.value);
+  else if (id === "pw_rate") pwInput("rate", e.target.value);
   else if (id && id.startsWith("z_") && S[S.cat]) { S[S.cat][id.slice(2)] = e.target.value; save(); }
 });
 
