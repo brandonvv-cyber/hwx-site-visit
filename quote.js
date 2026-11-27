@@ -11,8 +11,8 @@
     "Not included unless stated: installation, excavation and trenching, delivery, and the electrical connection (done by a registered electrician with a certificate of compliance).",
   ];
   const CO = { name: "Hydroworx SA (Pty) Ltd", reg: "Reg 2019/529213/07 · VAT 483 029 1920", addr: "Unit 7, 1300 Umgeni Road, Springfield Park, Durban 4001", contact: "Tel 031 285 0263 · WhatsApp 081 535 9997 · enquiries@hydroworx.co.za" };
-  const GROUPS = [["pump", "Pump"], ["filter", "Filter"], ["weir", "Weirs (skimmers)"], ["return", "Returns"], ["cover", "Pump cover"], ["control", "Control box and electrical"], ["pipe", "Pipe and fittings"], ["spa", "Spa"], ["sauna", "Sauna"], ["steam", "Steam room"], ["reticulation", "Water reticulation"], ["feature", "Water features"], ["other", "Other items"]];
-  const ICON = { pipe: "pipe", reticulation: "tap", feature: "fountain", other: "box" };
+  const GROUPS = [["pump", "Pump"], ["filter", "Filter"], ["weir", "Weirs (skimmers)"], ["return", "Returns"], ["cover", "Pump cover"], ["control", "Control box and electrical"], ["pipe", "Pipe and fittings"], ["repair", "Repairs and fittings"], ["spa", "Spa"], ["sauna", "Sauna"], ["steam", "Steam room"], ["reticulation", "Water reticulation"], ["feature", "Water features"], ["other", "Other items"]];
+  const ICON = { pipe: "pipe", repair: "pump", reticulation: "tap", feature: "fountain", other: "box" };
   const R = n => "R " + (Math.round(n * 100) / 100).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   let logoImg = null;

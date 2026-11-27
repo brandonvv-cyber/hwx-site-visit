@@ -99,9 +99,10 @@ button.rm { margin-left: 8px; background: none; border: 0; color: var(--warn); t
 <script src="cat.js"></script>
 <script src="sauna.js"></script>
 <script src="pipe.js"></script>
+<script src="jobs.js"></script>
 <script>
 "use strict";
-const SHOP_VERSION = "1.4";
+const SHOP_VERSION = "1.5";
 const API = "https://script.google.com/macros/s/AKfycbwdahF6EsK6Xdo8Wy888LWhHfXSJZK7zliP-njXFUaqZr4txa3Q9MSPYqgxzC-8tLUMBg/exec";
 const STAFF = ["Janine", "Alett", "Patience", "Other"];
 const app = document.getElementById("app"), foot = document.getElementById("foot");
@@ -109,7 +110,7 @@ const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&am
 const money = n => "R " + (Math.round(n * 100) / 100).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const ls = { get(k) { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} } };
 let KEY = "", S = null;
-function fresh() { return { view: "client", staff: (S && S.staff) || "", client: { name: "", phone: "", address: "", email: "" }, job: null, basket: [], cat: "", q: "", spa: { model: "Atlantic", grade: "B", htc: "HTCB" }, sauna: { L: "", W: "", H: "", glass: "" }, sw: HWXSauna.newDesign(), pw: HWXPipe.newDesign(ls.get("hwx-pipe-rate") || ""), steam: { L: "", W: "", H: "", glass: "" }, zres: null, zmsg: "", inp: { mode: "vol", volumeL: "", len: "", wid: "", depth: "", use: "domestic", turnover: 6, pos: "level", height: "", distance: "", bends: "3-5", weirs: 1, returns: "" }, res: null, pick: {}, qty: {}, stock: null, sageRef: "" }; }
+function fresh() { return { view: "client", staff: (S && S.staff) || "", client: { name: "", phone: "", address: "", email: "" }, job: null, basket: [], cat: "", q: "", spa: { model: "Atlantic", grade: "B", htc: "HTCB" }, sauna: { L: "", W: "", H: "", glass: "" }, sw: HWXSauna.newDesign(), pw: HWXPipe.newDesign(ls.get("hwx-pipe-rate") || ""), rp: HWXJobs.newState(), steam: { L: "", W: "", H: "", glass: "" }, zres: null, zmsg: "", inp: { mode: "vol", volumeL: "", len: "", wid: "", depth: "", use: "domestic", turnover: 6, pos: "level", height: "", distance: "", bends: "3-5", weirs: 1, returns: "" }, res: null, pick: {}, qty: {}, stock: null, sageRef: "" }; }
 function save() { ls.set("hwx-shop-session", S); }
 function setFoot(h) { foot.innerHTML = h; foot.hidden = !h; }
 function hdr(t, back) { return `<div class="top">${back ? `<button class="back" data-go="${back}">&#9664; Back</button>` : ""}<h1>${esc(t)}</h1></div>`; }
@@ -372,12 +373,64 @@ function addPipe() {
   d.m = 0; for (const k in d.f) d.f[k] = 0;
   save(); vCat();
 }
+// Repairs and fittings: tap the fault, check the parts, labour from the hours (starter list is PROPOSED, see jobs.js)
+const rpQ = (k, d) => S.rp.qty[k] != null ? +S.rp.qty[k] : d;
+function rpAside() {
+  const r = HWXJobs.calc(S.rp), M = HWXPipe.money;
+  if (!r.job) return `<div class="wzcard"><div class="hint" style="margin:0">Choose what it is on, then tap the job.</div></div>`;
+  const rows = r.lines.map(l => `<tr><td>${esc(l.label)}<span class="s">${esc(l.code || "not in Sage")}${l.code === "LAB" ? " &middot; " + l.qty + " h at " + M(l.price) : ""}${l.price > 0 || !l.code ? "" : " &middot; no price in Sage"}</span></td><td class="n">${l.qty}</td><td class="n">${l.price > 0 ? M(l.price * l.qty) : "&ndash;"}</td></tr>`).join("");
+  return `<div class="wzcard"><b>${esc(r.job.name)}</b><table style="margin-top:8px"><tr><th>Item</th><th class="n">Qty</th><th class="n">Ex VAT</th></tr>${rows}<tr class="tot"><td colspan="2">Total so far</td><td class="n">${M(r.total)}</td></tr></table>
+    ${r.unpriced ? `<div class="note">${r.unpriced} line${r.unpriced > 1 ? "s have" : " has"} no price yet, so the total is short by that: the office prices ${r.unpriced > 1 ? "them" : "it"}.</div>` : ""}
+    <div class="rd">Cause first: note what made the part fail and fix that too (FLT-GEN-05). Photograph the old and new part.</div></div>`;
+}
+function rpHtml() {
+  const J = HWXJobs, M = HWXPipe.money, r = J.calc(S.rp), job = r.job, g = S.rp.g, st = [];
+  const chip = (p, v, t, on) => `<button class="chip${on ? " on" : ""}" data-rp="${p}" data-v="${esc(v)}">${esc(t)}</button>`;
+  st.push(swStep(1, "What is it on?", (J.GROUPS.find(x => x[0] === g) || [])[1] || "", `<div class="chips">${J.GROUPS.map(([k, t]) => chip("g", k, t, k === g)).join("")}</div>`));
+  st.push(swStep(2, "What needs doing?", job ? job.name : "tap the job", `<div class="tls">${J.JOBS.filter(j => j.g === g).map(j => { const t = J.calc({ job: j.id, pick: {}, qty: {}, ex: {}, hours: "", km: "" }); return `<button class="tl${job && job.id === j.id ? " on" : ""}" data-rp="job" data-v="${j.id}"><span class="tn">${esc(j.name)}</span><span class="tb">${esc(j.sym)}</span><span class="tb"><b>about ${M(t.total)}</b>${t.unpriced ? " + parts to price" : ""}</span></button>`; }).join("")}</div>`));
+  if (job) {
+    const partRow = (it, key, ex) => {
+      const q = rpQ(key, it.qty), c = J.code(it, S.rp, key), m = c && HWXCat.get(c), unit = m && m.price > 0;
+      const chips = it.pick ? `<div class="chips" style="margin:6px 0">${it.pick.filter(J.has).map(x => { const mm = HWXCat.get(x); return chip("pick", key + ":" + x, mm.desc.replace(/\s+/g, " ").slice(0, 34) + (mm.price > 0 ? " " + M(mm.price) : ""), x === c); }).join("")}</div>` : "";
+      return `<div class="prow${q ? " on" : ""}" style="flex-wrap:wrap"><div class="pd"><b>${esc(it.label)}</b><span class="s">${it.custom ? "Not in Sage: the office prices it" : unit ? esc(c) + " &middot; " + M(m.price) + " each" : esc(c || "") + " &middot; no price in Sage"}</span></div><div class="step"><button data-rp="q" data-v="${key}:-1">&minus;</button><b>${q}</b><button data-rp="q" data-v="${key}:1">+</button></div>${chips}</div>`;
+    };
+    st.push(swStep(3, "Check the parts", r.lines.filter(l => l.label !== "Labour" && l.label !== "Travel").length + " line(s)", job.parts.map((p, i) => partRow(p, "p" + i)).join("")
+      + (job.ex.length ? `<div class="sub">Also consider (tap to add)</div>` + job.ex.map((e, i) => `<div class="chips" style="margin-bottom:6px">${chip("ex", "x" + i, e.label, S.rp.ex["x" + i])}</div>` + (S.rp.ex["x" + i] ? partRow(e, "x" + i) : "")).join("") : "")));
+    st.push(swStep(4, "Labour and travel", r.hours + " h", `<div class="step" style="margin-bottom:10px"><button data-rp="h" data-v="-0.5">&minus;</button><input class="w" id="rp_h" inputmode="decimal" value="${esc(S.rp.hours === "" ? job.h : S.rp.hours)}" style="width:110px;text-align:center"><button data-rp="h" data-v="0.5">+</button><span class="rd" style="margin:0 0 0 8px">hours at ${HWXCat.get("LAB") ? M(HWXCat.get("LAB").price) : "the office rate"} (Sage item LAB)</span></div>
+      <label class="f">Travel, km (Sage item Travel, once per visit: put it on the first job only; blank = none)</label><input class="w" id="rp_km" inputmode="numeric" value="${esc(S.rp.km)}" placeholder="0" style="max-width:200px"><div class="hint" style="margin-top:8px">The hours are a starting guess, not confirmed: change them to what the job needs. No call-out fee is added here: if the client paid the R650, deduct it as a credit when the Sage invoice is raised (FLT-QTE-01).</div>`));
+  }
+  return `<div class="hint">Tap through. Parts come from Sage with today's prices, labour from the hours. Longer pipe runs and fittings: use Pipework and glue.</div>
+    <div class="wzgrid"><div class="wz">${st.join("")}${job ? `<button class="btn" style="max-width:none;width:100%;margin:18px 0 4px" data-act="addrepair">Add this job to the quote</button>` : ""}<div id="zmsg">${S.zmsg ? `<div class="ok">${esc(S.zmsg)}</div>` : ""}</div></div><aside id="rpaside">${rpAside()}</aside></div>`;
+}
+function rpAct(path, v) {
+  const s = S.rp, J = HWXJobs;
+  if (path === "g") { s.g = v; s.job = ""; s.pick = {}; s.qty = {}; s.ex = {}; s.hours = ""; }
+  else if (path === "job") { s.job = v; s.pick = {}; s.qty = {}; s.ex = {}; s.hours = ""; }
+  else if (path === "pick") { const i = v.indexOf(":"); s.pick[v.slice(0, i)] = v.slice(i + 1); }
+  else if (path === "ex") s.ex[v] = !s.ex[v];
+  else if (path === "q") { const [k, d] = v.split(":"), job = J.jobOf(s.job), it = k[0] === "p" ? job.parts[+k.slice(1)] : job.ex[+k.slice(1)]; s.qty[k] = Math.max(0, rpQ(k, it.qty) + (+d)); }
+  else if (path === "h") { const job = J.jobOf(s.job), cur = s.hours === "" ? job.h : (+String(s.hours).replace(",", ".") || 0); s.hours = String(Math.max(0, cur + (+v))); }
+  S.zmsg = ""; save(); vCat();
+}
+function rpInput(k, v) {
+  S.rp[k === "rp_h" ? "hours" : "km"] = v; save();
+  const a = document.getElementById("rpaside"); if (a) a.innerHTML = rpAside();
+}
+function addRepair() {
+  const r = HWXJobs.calc(S.rp), m = document.getElementById("zmsg");
+  if (!r.job || !r.lines.length) { if (m) m.innerHTML = `<div class="note">Tap a job first.</div>`; return; }
+  r.lines.forEach(l => { if (l.code) addCode(l.code, l.qty, "repair"); else S.basket.push({ id: uid(), cat: "repair", desc: l.label, price: null, qty: l.qty, custom: true, note: l.label === "Labour" || /Travel/.test(l.label) ? "Price from the office." : "Not in Sage: price from the supplier." }); });
+  S.zmsg = "Added " + r.job.name + " (" + r.lines.length + " line" + (r.lines.length > 1 ? "s" : "") + "). Pick another job, or open the list.";
+  S.rp.job = ""; S.rp.pick = {}; S.rp.qty = {}; S.rp.ex = {}; S.rp.hours = ""; S.rp.km = "";   // travel is added once, with the first job of the visit
+  save(); vCat();
+}
 function vCat() {
   const c = HWXCat.CATS.find(x => x.key === S.cat) || HWXCat.CATS.find(x => x.key === "other"), sy = window.scrollY;
-  let h = hdr(c.title, "menu") + `<div class="wrap${S.cat === "sauna" || S.cat === "pipe" ? " wzwrap" : ""}"><div class="ok">${esc(S.client.name)} &middot; ${esc(S.client.address)}</div>`;
+  let h = hdr(c.title, "menu") + `<div class="wrap${S.cat === "sauna" || S.cat === "pipe" || S.cat === "repair" ? " wzwrap" : ""}"><div class="ok">${esc(S.client.name)} &middot; ${esc(S.client.address)}</div>`;
   if (S.cat === "spa") h += spaBlock();
   if (S.cat === "sauna") h += swHtml() + `<div class="sec" style="margin-top:34px">Ready-made saunas, heaters and parts (Sage)</div>`;
   if (S.cat === "steam") h += sizeBlock(S.cat);
+  if (S.cat === "repair") h += rpHtml() + `<div class="sec" style="margin-top:34px">Other parts (Sage)</div>`;
   if (S.cat === "pipe") h += pwHtml() + `<div class="sec" style="margin-top:34px">Valves, pumps and other parts (Sage)</div>`;
   if (S.cat === "reticulation") h += `<div class="hint">For a borehole or a full water treatment plant, book a site visit (the water must be tested first). Use this screen for off-the-shelf pumps, tanks and parts.</div>`;
   (HWXCat.QUICK[S.cat] || []).forEach(([t, codes]) => { h += `<div class="sec">${esc(t)}</div>` + codes.map(rowFor).join(""); });
@@ -419,6 +472,7 @@ function flagOf(l) {
   if (!(l.price > 0)) return "No price in Sage: the office prices it";
   if (!S.stock || !S.stock.ok) return "";
   if (!S.stock.codes[l.code]) return "Not in the Sage list";
+  if (HWXJobs.SERVICE.includes(l.code)) return "";   // labour, travel and services have no stock
   if (l.onhand <= 0) return "OUT OF STOCK";
   if (l.onhand < l.qty) return "Only " + l.onhand + " on hand";
   return "";
@@ -560,6 +614,7 @@ document.addEventListener("click", e => {
   if (b.dataset.sw) return swSet(b.dataset.sw, b.dataset.v);
   if (b.dataset.swt) return swToggle(b.dataset.swt);
   if (b.dataset.pw) return pwAct(b.dataset.pw, b.dataset.v);
+  if (b.dataset.rp) return rpAct(b.dataset.rp, b.dataset.v);
   if (b.dataset.staff) { S.staff = b.dataset.staff; save(); document.querySelectorAll("[data-staff]").forEach(x => x.classList.toggle("on", x === b)); return; }
   if (b.dataset.k) { readSpec(); S.inp[b.dataset.k] = b.dataset.v; save(); return vSpec(); }
   if (b.dataset.pick) { S.pick[b.dataset.pick] = +b.dataset.i; save(); return vList(); }
@@ -578,6 +633,7 @@ document.addEventListener("click", e => {
   else if (a === "addsize") addSize();
   else if (a === "addsauna") addSauna();
   else if (a === "addpipe") addPipe();
+  else if (a === "addrepair") addRepair();
   else if (a === "addcustom") addCustom();
   else if (a === "mkclient") mkClient();
   else if (a === "calc") calc();
@@ -603,6 +659,7 @@ document.addEventListener("input", e => {
   if (id === "sageRef") { S.sageRef = e.target.value; save(); }
   else if (id === "srch") { S.q = e.target.value; const el = document.getElementById("sres"); if (el) el.innerHTML = searchHtml(); }
   else if (id && /^sw_[WDH]$/.test(id)) swInput(id.slice(3), e.target.value);
+  else if (id === "rp_h" || id === "rp_km") rpInput(id, e.target.value);
   else if (id === "pw_m") pwInput("m", e.target.value);
   else if (id === "pw_rate") pwInput("rate", e.target.value);
   else if (id && id.startsWith("z_") && S[S.cat]) { S[S.cat][id.slice(2)] = e.target.value; save(); }
